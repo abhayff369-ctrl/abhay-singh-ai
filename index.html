@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b0b0f">
+
+  <title>Abhay Singh AI</title>
+
+  <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+
+    <div class="sidebar-header">
+
+      <div class="brand">
+        <div class="brand-logo">A</div>
+
+        <div>
+          <div class="brand-name">Abhay Singh AI</div>
+          <div class="brand-sub">Gemini Powered</div>
+        </div>
+      </div>
+
+      <button class="new-chat" id="newChat">
+        <span>＋</span>
+        New chat
+      </button>
+
+    </div>
+
+    <div class="history">
+
+      <div class="history-label">
+        Recent chats
+      </div>
+
+      <div id="historyList"></div>
+
+    </div>
+
+    <div class="sidebar-footer">
+
+      <div class="developer">
+        <div class="developer-avatar">AS</div>
+
+        <div>
+          <small>Developer</small>
+          <strong>Abhay Singh</strong>
+        </div>
+      </div>
+
+    </div>
+
+  </aside>
+
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <header class="topbar">
+
+      <button class="menu-button" id="menuButton">
+        ☰
+      </button>
+
+      <div class="topbar-title">
+        Abhay Singh AI
+      </div>
+
+      <button class="clear-button" id="clearChat">
+        🗑
+      </button>
+
+    </header>
+
+
+    <!-- CHAT -->
+    <section class="chat" id="chat">
+
+      <div class="welcome" id="welcome">
+
+        <div class="welcome-logo">
+          A
+        </div>
+
+        <h1>How can I help you?</h1>
+
+        <p>
+          Ask anything and chat with Abhay Singh AI.
+        </p>
+
+        <div class="suggestions">
+
+          <button data-prompt="Explain Artificial Intelligence in simple Hindi.">
+            <span>✦</span>
+            Explain AI
+          </button>
+
+          <button data-prompt="Write a professional website notice.">
+            <span>✎</span>
+            Write something
+          </button>
+
+          <button data-prompt="Help me debug my JavaScript code.">
+            <span>&lt;/&gt;</span>
+            Help with code
+          </button>
+
+          <button data-prompt="Give me some useful website ideas.">
+            <span>✦</span>
+            Website ideas
+          </button>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- COMPOSER -->
+    <div class="composer-area">
+
+      <div class="composer">
+
+        <textarea
+          id="messageInput"
+          placeholder="Message Abhay Singh AI..."
+          rows="1"
+          maxlength="20000"
+        ></textarea>
+
+        <button
+          id="sendButton"
+          class="send-button"
+          title="Send"
+        >
+          ➤
+        </button>
+
+      </div>
+
+      <div class="composer-note">
+        Abhay Singh AI may make mistakes. Check important information.
+      </div>
+
+    </div>
+
+  </main>
+
+</div>
+
+
+<script src="/app.js"></script>
+
+</body>
+</html>
