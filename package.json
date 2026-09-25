@@ -1,0 +1,13 @@
+{
+  "name": "abhay-singh-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Abhay Singh AI - Gemini powered AI assistant",
+  "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
