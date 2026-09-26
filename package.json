@@ -2,11 +2,11 @@
   "name": "aura-ai",
   "version": "1.0.0",
   "private": true,
-  "description": "AURA AI - Gemini powered AI assistant",
-  "type": "commonjs",
+  "description": "AURA AI — premium AI assistant by Abhay Singh.",
+  "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "build": "echo Static Vercel app"
+    "build": "echo \"Static Vercel app — nothing to build\""
   },
   "engines": {
     "node": ">=20"
