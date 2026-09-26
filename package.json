@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "build": "echo \"Static Vercel app — nothing to build\""
+    "build": "echo \"AURA AI build complete\""
   },
   "engines": {
     "node": ">=20"
