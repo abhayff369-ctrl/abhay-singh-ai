@@ -3,12 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "description": "AURA AI — premium AI assistant by Abhay Singh.",
-  "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "build": "echo \"AURA AI build complete\""
+    "build": "echo AURA AI build complete"
   },
   "engines": {
-    "node": ">=20"
+    "node": "20.x"
   }
 }
