@@ -1,89 +1,74 @@
-/* =========================================================
-   AURA AI — Frontend
-   Developer: Abhay Singh
-   API: /api/chat
-   ========================================================= */
-
 "use strict";
 
-/* =========================================================
-   AUTOMATIC SYSTEM THEME
-   ========================================================= */
+const $ = (selector) => document.querySelector(selector);
 
-(function setupSystemTheme() {
-  const media = window.matchMedia("(prefers-color-scheme: dark)");
+const messageInput = $("#messageInput");
+const composer = $("#composer");
+const sendBtn = $("#sendBtn");
+const messages = $("#messages");
+const welcome = $("#welcome");
+const fileInput = $("#fileInput");
+const attachmentPreview = $("#attachmentPreview");
+const historyEl = $("#history");
+const searchInput = $("#searchInput");
+const newChatBtn = $("#newChatBtn");
+const topNewChat = $("#topNewChat");
+const themeBtn = $("#themeBtn");
+const clearBtn = $("#clearBtn");
+const menuBtn = $("#menuBtn");
+const sidebar = $("#sidebar");
+const voiceBtn = $("#voiceBtn");
+const toastEl = $("#toast");
 
-  function applyTheme() {
-    document.documentElement.setAttribute(
-      "data-theme",
-      media.matches ? "dark" : "light"
-    );
-  }
-
-  applyTheme();
-
-  if (typeof media.addEventListener === "function") {
-    media.addEventListener("change", applyTheme);
-  } else if (typeof media.addListener === "function") {
-    media.addListener(applyTheme);
-  }
-})();
-
-/* =========================================================
-   ELEMENTS
-   ========================================================= */
-
-const composer = document.getElementById("composer");
-const messageInput = document.getElementById("messageInput");
-const sendBtn = document.getElementById("sendBtn");
-const chat = document.getElementById("chat");
-const chatInner = document.getElementById("chatInner");
-const welcome = document.getElementById("welcome");
-
-const newChatBtn = document.getElementById("newChatBtn");
-const attachBtn = document.getElementById("attachBtn");
-const fileInput = document.getElementById("fileInput");
-const voiceBtn = document.getElementById("voiceBtn");
-
-const sidebar = document.getElementById("sidebar");
-const menuBtn = document.getElementById("menuBtn");
-const overlay = document.getElementById("overlay");
-
-const historyList = document.getElementById("historyList");
-const attachmentsBox = document.getElementById("attachments");
-
-/* =========================================================
-   CONSTANTS
-   ========================================================= */
-
-const STORAGE_KEY = "aura_ai_chats_v1";
-
-const MAX_FILE_SIZE = 8 * 1024 * 1024;
-const MAX_TOTAL_SIZE = 12 * 1024 * 1024;
-
-let chats = [];
-let currentChat = null;
-
-let selectedFiles = [];
-
-let isGenerating = false;
-let abortController = null;
-
+let chats = loadChats();
+let currentChatId = null;
+let attachments = [];
+let controller = null;
+let generating = false;
+let composing = false;
 let mediaRecorder = null;
 let audioChunks = [];
-let voiceTimer = null;
-let voiceSeconds = 0;
 
-/* =========================================================
-   HELPERS
-   ========================================================= */
+function loadChats() {
+  try {
+    return JSON.parse(localStorage.getItem("aura_chats") || "[]");
+  } catch {
+    return [];
+  }
+}
 
-function $(id) {
-  return document.getElementById(id);
+function saveChats() {
+  localStorage.setItem("aura_chats", JSON.stringify(chats));
+}
+
+function createChat() {
+  return {
+    id: crypto.randomUUID(),
+    title: "New chat",
+    messages: [],
+    createdAt: Date.now()
+  };
+}
+
+function getCurrentChat() {
+  return chats.find((chat) => chat.id === currentChatId);
+}
+
+function ensureChat() {
+  let chat = getCurrentChat();
+
+  if (!chat) {
+    chat = createChat();
+    chats.unshift(chat);
+    currentChatId = chat.id;
+    saveChats();
+  }
+
+  return chat;
 }
 
 function escapeHTML(value) {
-  return String(value ?? "")
+  return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -91,231 +76,30 @@ function escapeHTML(value) {
     .replaceAll("'", "&#039;");
 }
 
-function uid() {
-  return (
-    Date.now().toString(36) +
-    Math.random().toString(36).slice(2, 8)
-  );
-}
-
-function scrollToBottom(smooth = true) {
-  if (!chat) return;
-
-  chat.scrollTo({
-    top: chat.scrollHeight,
-    behavior: smooth ? "smooth" : "auto"
-  });
-}
-
-/* =========================================================
-   LOCAL STORAGE
-   ========================================================= */
-
-function loadChats() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-
-    if (!saved) {
-      chats = [];
-      return;
-    }
-
-    const parsed = JSON.parse(saved);
-
-    chats = Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    console.warn("AURA AI: failed to load chats", error);
-    chats = [];
-  }
-}
-
-function saveChats() {
-  try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(chats)
-    );
-  } catch (error) {
-    console.warn("AURA AI: failed to save chats", error);
-  }
-}
-
-/* =========================================================
-   CHAT CREATION
-   ========================================================= */
-
-function createChat() {
-  const chatObject = {
-    id: uid(),
-    title: "New Chat",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    messages: []
-  };
-
-  chats.unshift(chatObject);
-  currentChat = chatObject;
-
-  saveChats();
-
-  renderHistory();
-  renderCurrentChat();
-
-  closeSidebar();
-}
-
-/* =========================================================
-   HISTORY
-   ========================================================= */
-
-function renderHistory() {
-  if (!historyList) return;
-
-  historyList.innerHTML = "";
-
-  if (!chats.length) {
-    const empty = document.createElement("div");
-
-    empty.style.padding = "12px 8px";
-    empty.style.color = "var(--muted)";
-    empty.style.fontSize = "13px";
-
-    empty.textContent = "No previous chats";
-
-    historyList.appendChild(empty);
-    return;
-  }
-
-  chats
-    .slice()
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .forEach((item) => {
-      const button = document.createElement("button");
-
-      button.className = "history-item";
-      button.type = "button";
-
-      button.textContent =
-        item.title || "New Chat";
-
-      button.addEventListener("click", () => {
-        currentChat = chats.find(
-          (chatItem) => chatItem.id === item.id
-        );
-
-        renderCurrentChat();
-        closeSidebar();
-      });
-
-      historyList.appendChild(button);
-    });
-}
-
-/* =========================================================
-   RENDER CURRENT CHAT
-   ========================================================= */
-
-function renderCurrentChat() {
-  if (!chatInner) return;
-
-  chatInner.innerHTML = "";
-
-  if (!currentChat) {
-    if (welcome) {
-      welcome.style.display = "flex";
-      chatInner.appendChild(welcome);
-    }
-
-    return;
-  }
-
-  if (welcome) {
-    welcome.style.display = "none";
-  }
-
-  if (!currentChat.messages.length) {
-    if (welcome) {
-      welcome.style.display = "flex";
-      chatInner.appendChild(welcome);
-    }
-
-    return;
-  }
-
-  currentChat.messages.forEach((message) => {
-    renderMessage(
-      message.role,
-      message.content,
-      false
-    );
-  });
-
-  requestAnimationFrame(() => {
-    scrollToBottom(false);
-  });
-}
-
-/* =========================================================
-   MARKDOWN-LIKE RENDERER
-   ========================================================= */
-
-function renderMarkdown(text) {
+function markdown(text) {
   let html = escapeHTML(text);
 
-  /* Code blocks */
   html = html.replace(
-    /```([\s\S]*?)```/g,
-    (_, code) => {
-      return `<pre><code>${code.trim()}</code></pre>`;
-    }
+    /```(\w+)?\n([\s\S]*?)```/g,
+    (_, lang, code) => `
+      <pre><code>${code.trim()}</code></pre>
+    `
   );
 
-  /* Inline code */
-  html = html.replace(
-    /`([^`\n]+)`/g,
-    "<code>$1</code>"
-  );
-
-  /* Bold */
   html = html.replace(
     /\*\*(.*?)\*\*/g,
     "<strong>$1</strong>"
   );
 
-  /* Italic */
   html = html.replace(
-    /(^|[^\*])\*([^*\n]+)\*(?!\*)/g,
-    "$1<em>$2</em>"
+    /`([^`]+)`/g,
+    "<code>$1</code>"
   );
 
-  /* Links */
-  html = html.replace(
-    /(https?:\/\/[^\s<]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-  );
-
-  /* Lists */
-  html = html.replace(
-    /(?:^|\n)- (.*?)(?=\n|$)/g,
-    "<li>$1</li>"
-  );
-
-  html = html.replace(
-    /(<li>.*?<\/li>)/gs,
-    "<ul>$1</ul>"
-  );
-
-  /* Paragraphs / line breaks */
   html = html
     .split(/\n{2,}/)
     .map((block) => {
-      if (
-        block.startsWith("<pre>") ||
-        block.startsWith("<ul>")
-      ) {
-        return block;
-      }
-
+      if (block.startsWith("<pre>")) return block;
       return `<p>${block.replace(/\n/g, "<br>")}</p>`;
     })
     .join("");
@@ -323,742 +107,557 @@ function renderMarkdown(text) {
   return html;
 }
 
-/* =========================================================
-   RENDER MESSAGE
-   ========================================================= */
+function showToast(message) {
+  toastEl.textContent = message;
+  toastEl.classList.add("show");
 
-function renderMessage(
-  role,
-  content,
-  save = true
-) {
-  if (!chatInner) return null;
+  clearTimeout(showToast.timer);
 
-  if (welcome) {
-    welcome.style.display = "none";
+  showToast.timer = setTimeout(() => {
+    toastEl.classList.remove("show");
+  }, 2200);
+}
+
+function updateSendState() {
+  const hasText = messageInput.value.trim().length > 0;
+  const hasFiles = attachments.length > 0;
+
+  sendBtn.disabled = generating ? false : (!hasText && !hasFiles);
+
+  const sendIcon = sendBtn.querySelector(".send-icon");
+  const stopIcon = sendBtn.querySelector(".stop-icon");
+
+  sendIcon.classList.toggle("hidden", generating);
+  stopIcon.classList.toggle("hidden", !generating);
+
+  sendBtn.setAttribute(
+    "aria-label",
+    generating ? "Stop generating" : "Send message"
+  );
+
+  sendBtn.title = generating ? "Stop generating" : "Send message";
+}
+
+function autoResize() {
+  messageInput.style.height = "auto";
+  messageInput.style.height =
+    Math.min(messageInput.scrollHeight, 170) + "px";
+}
+
+function renderHistory(filter = "") {
+  historyEl.innerHTML = "";
+
+  if (!chats.length) {
+    historyEl.innerHTML = `
+      <div class="history-title">Chats</div>
+      <div style="padding:10px;color:var(--muted);font-size:12px;">
+        No chats yet
+      </div>
+    `;
+    return;
   }
 
-  const row = document.createElement("div");
+  const filtered = chats.filter((chat) =>
+    chat.title.toLowerCase().includes(filter.toLowerCase())
+  );
 
-  row.className = `message-row ${role}`;
+  const title = document.createElement("div");
+  title.className = "history-title";
+  title.textContent = "Recent";
+  historyEl.appendChild(title);
+
+  filtered.forEach((chat) => {
+    const button = document.createElement("button");
+    button.className =
+      "history-item" +
+      (chat.id === currentChatId ? " active" : "");
+
+    button.innerHTML = `
+      <span>◌</span>
+      <span>${escapeHTML(chat.title)}</span>
+    `;
+
+    button.addEventListener("click", () => {
+      currentChatId = chat.id;
+      renderChat();
+      renderHistory(searchInput.value);
+      sidebar.classList.remove("open");
+    });
+
+    historyEl.appendChild(button);
+  });
+}
+
+function renderChat() {
+  const chat = getCurrentChat();
+
+  messages.innerHTML = "";
+
+  if (!chat || chat.messages.length === 0) {
+    welcome.classList.remove("hidden");
+    return;
+  }
+
+  welcome.classList.add("hidden");
+
+  chat.messages.forEach((message) => {
+    renderMessage(message.role, message.content, false);
+  });
+
+  scrollBottom();
+}
+
+function renderMessage(role, content, save = true) {
+  welcome.classList.add("hidden");
+
+  const wrapper = document.createElement("div");
+  wrapper.className = `message ${role}`;
+
+  const avatar = document.createElement("div");
+  avatar.className = "message-avatar";
+  avatar.textContent = role === "user" ? "You" : "A";
+
+  const contentWrap = document.createElement("div");
+  contentWrap.className = "message-content";
 
   const bubble = document.createElement("div");
-
-  bubble.className = "message";
+  bubble.className = "message-bubble";
 
   if (role === "assistant") {
-    bubble.innerHTML = renderMarkdown(content);
+    bubble.innerHTML = markdown(content);
   } else {
     bubble.textContent = content;
   }
 
-  row.appendChild(bubble);
-  chatInner.appendChild(row);
+  contentWrap.appendChild(bubble);
 
-  if (
-    save &&
-    currentChat &&
-    typeof content === "string"
-  ) {
-    currentChat.messages.push({
-      role,
-      content,
-      createdAt: Date.now()
+  if (role === "assistant") {
+    const actions = document.createElement("div");
+    actions.className = "message-actions";
+
+    const copy = document.createElement("button");
+    copy.textContent = "Copy";
+
+    copy.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(content);
+      showToast("Copied");
     });
 
-    currentChat.updatedAt = Date.now();
+    const speak = document.createElement("button");
+    speak.textContent = "Speak";
+
+    speak.addEventListener("click", () => {
+      speechSynthesis.cancel();
+      speechSynthesis.speak(new SpeechSynthesisUtterance(content));
+    });
+
+    actions.append(copy, speak);
+    contentWrap.appendChild(actions);
+  }
+
+  wrapper.append(avatar, contentWrap);
+  messages.appendChild(wrapper);
+
+  if (save) {
+    const chat = ensureChat();
+
+    chat.messages.push({
+      role,
+      content
+    });
+
+    if (
+      role === "user" &&
+      chat.title === "New chat"
+    ) {
+      chat.title = content.slice(0, 38);
+    }
 
     saveChats();
-    renderHistory();
+    renderHistory(searchInput.value);
   }
 
-  scrollToBottom();
-
-  return row;
+  scrollBottom();
 }
 
-/* =========================================================
-   TYPING INDICATOR
-   ========================================================= */
-
-function showTyping() {
-  const row = document.createElement("div");
-
-  row.className = "message-row assistant";
-  row.id = "auraTyping";
-
-  const bubble = document.createElement("div");
-
-  bubble.className = "message";
-
-  bubble.innerHTML = `
-    <div class="typing" aria-label="AURA AI is typing">
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
-  `;
-
-  row.appendChild(bubble);
-  chatInner.appendChild(row);
-
-  scrollToBottom();
-
-  return row;
-}
-
-function removeTyping() {
-  const typing = $("auraTyping");
-
-  if (typing) {
-    typing.remove();
-  }
-}
-
-/* =========================================================
-   SEND BUTTON STATE
-   ========================================================= */
-
-function setGeneratingState(value) {
-  isGenerating = value;
-
-  if (!sendBtn) return;
-
-  if (value) {
-    sendBtn.classList.add("stop");
-    sendBtn.title = "Stop generating";
-    sendBtn.setAttribute("aria-label", "Stop generating");
-
-    sendBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="7" y="7" width="10" height="10" rx="2"></rect>
-      </svg>
-    `;
-  } else {
-    sendBtn.classList.remove("stop");
-    sendBtn.title = "Send message";
-    sendBtn.setAttribute("aria-label", "Send message");
-
-    sendBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M22 2 11 13"></path>
-        <path d="m22 2-7 20-4-9-9-4Z"></path>
-      </svg>
-    `;
-  }
-}
-
-/* =========================================================
-   AUTO RESIZE TEXTAREA
-   ========================================================= */
-
-function autoResizeTextarea() {
-  if (!messageInput) return;
-
-  messageInput.style.height = "auto";
-
-  const maxHeight = 180;
-
-  messageInput.style.height =
-    Math.min(
-      messageInput.scrollHeight,
-      maxHeight
-    ) + "px";
-}
-
-/* =========================================================
-   FILE HANDLING
-   ========================================================= */
-
-function formatBytes(bytes) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function renderAttachments() {
-  if (!attachmentsBox) return;
-
-  attachmentsBox.innerHTML = "";
-
-  selectedFiles.forEach((file, index) => {
-    const chip = document.createElement("div");
-
-    chip.className = "attachment-chip";
-
-    chip.innerHTML = `
-      <span title="${escapeHTML(file.name)}">
-        ${escapeHTML(file.name)}
-      </span>
-      <small>${formatBytes(file.size)}</small>
-      <button
-        type="button"
-        class="attachment-remove"
-        aria-label="Remove ${escapeHTML(file.name)}"
-      >×</button>
-    `;
-
-    const removeButton =
-      chip.querySelector(".attachment-remove");
-
-    removeButton.addEventListener("click", () => {
-      selectedFiles.splice(index, 1);
-      renderAttachments();
-    });
-
-    attachmentsBox.appendChild(chip);
+function scrollBottom() {
+  requestAnimationFrame(() => {
+    const area = $("#chatArea");
+    area.scrollTop = area.scrollHeight;
   });
 }
 
-function addFiles(fileList) {
-  const files = Array.from(fileList || []);
+function addTyping() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "message assistant";
+  wrapper.id = "typingMessage";
 
-  for (const file of files) {
-    if (file.size > MAX_FILE_SIZE) {
-      alert(
-        `${file.name} is too large. Maximum size is 8 MB.`
-      );
-      continue;
-    }
+  wrapper.innerHTML = `
+    <div class="message-avatar">A</div>
+    <div class="message-content">
+      <div class="typing">
+        <i></i><i></i><i></i>
+      </div>
+    </div>
+  `;
 
-    const currentTotal = selectedFiles.reduce(
-      (sum, item) => sum + item.size,
-      0
-    );
-
-    if (
-      currentTotal + file.size >
-      MAX_TOTAL_SIZE
-    ) {
-      alert("Total attachment size cannot exceed 12 MB.");
-      break;
-    }
-
-    selectedFiles.push(file);
-  }
-
-  renderAttachments();
+  messages.appendChild(wrapper);
+  scrollBottom();
 }
 
-/* =========================================================
-   FILE → BASE64
-   ========================================================= */
+function removeTyping() {
+  $("#typingMessage")?.remove();
+}
 
-function fileToBase64(file) {
+async function readFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
     reader.onload = () => {
-      const result = String(reader.result || "");
-
-      const commaIndex = result.indexOf(",");
-
-      resolve(
-        commaIndex >= 0
-          ? result.slice(commaIndex + 1)
-          : result
-      );
+      resolve({
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        size: file.size,
+        data: reader.result
+      });
     };
 
     reader.onerror = reject;
-
     reader.readAsDataURL(file);
   });
 }
 
-async function prepareAttachments() {
-  const result = [];
+function renderAttachments() {
+  attachmentPreview.innerHTML = "";
 
-  for (const file of selectedFiles) {
-    const data = await fileToBase64(file);
+  attachments.forEach((file, index) => {
+    const chip = document.createElement("div");
+    chip.className = "file-chip";
 
-    result.push({
-      name: file.name,
-      type: file.type || "application/octet-stream",
-      size: file.size,
-      data
+    chip.innerHTML = `
+      <span>${escapeHTML(file.name)}</span>
+      <button type="button" aria-label="Remove attachment">×</button>
+    `;
+
+    chip.querySelector("button").addEventListener("click", () => {
+      attachments.splice(index, 1);
+      renderAttachments();
+      updateSendState();
     });
-  }
 
-  return result;
+    attachmentPreview.appendChild(chip);
+  });
 }
 
-/* =========================================================
-   SEND MESSAGE
-   ========================================================= */
+async function handleFiles(files) {
+  const selected = [...files];
+
+  if (selected.length > 5) {
+    showToast("Maximum 5 files allowed");
+    return;
+  }
+
+  const totalSize =
+    selected.reduce((sum, file) => sum + file.size, 0);
+
+  if (totalSize > 12 * 1024 * 1024) {
+    showToast("Total file size must be under 12 MB");
+    return;
+  }
+
+  for (const file of selected) {
+    if (file.size > 8 * 1024 * 1024) {
+      showToast(`${file.name} is too large`);
+      continue;
+    }
+
+    try {
+      attachments.push(await readFile(file));
+    } catch {
+      showToast(`Could not read ${file.name}`);
+    }
+  }
+
+  renderAttachments();
+  updateSendState();
+}
 
 async function sendMessage() {
-  if (isGenerating) {
+  if (generating) {
     stopGeneration();
     return;
   }
 
-  const text =
-    messageInput?.value.trim() || "";
+  const text = messageInput.value.trim();
 
-  if (!text && !selectedFiles.length) {
-    return;
-  }
+  if (!text && attachments.length === 0) return;
 
-  if (!currentChat) {
-    createChat();
-  }
+  const chat = ensureChat();
 
-  if (!currentChat) return;
+  const outgoing = {
+    message: text,
+    attachments: attachments.map((file) => ({
+      name: file.name,
+      type: file.type,
+      data: file.data
+    })),
+    history: chat.messages.map((message) => ({
+      role: message.role === "assistant" ? "model" : "user",
+      parts: [{ text: message.content }]
+    }))
+  };
 
-  if (text && currentChat.title === "New Chat") {
-    currentChat.title =
-      text.length > 42
-        ? text.slice(0, 42) + "…"
-        : text;
+  renderMessage("user", text || "[Attachment]");
+  
+  messageInput.value = "";
+  autoResize();
 
-    currentChat.updatedAt = Date.now();
-
-    saveChats();
-    renderHistory();
-  }
-
-  const files = selectedFiles.slice();
-
-  /* User message */
-  const displayText =
-    text ||
-    files
-      .map((file) => `📎 ${file.name}`)
-      .join("\n");
-
-  renderMessage("user", displayText, true);
-
-  /* Clear input */
-  if (messageInput) {
-    messageInput.value = "";
-    autoResizeTextarea();
-  }
-
-  selectedFiles = [];
+  attachments = [];
   renderAttachments();
 
-  setGeneratingState(true);
+  generating = true;
+  updateSendState();
 
-  const typing = showTyping();
+  addTyping();
 
-  abortController = new AbortController();
+  controller = new AbortController();
 
   try {
-    const attachments =
-      await prepareAttachmentsFrom(files);
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(outgoing),
+      signal: controller.signal
+    });
 
-    const payload = {
-      message: text,
-      attachments
-    };
-
-    const response = await fetch(
-      "/api/chat",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload),
-        signal: abortController.signal
-      }
-    );
-
-    const data = await response.json()
-      .catch(() => ({}));
+    const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(
-        data?.error ||
-        `Request failed (${response.status})`
-      );
+      throw new Error(data.error || "AI request failed");
     }
 
     removeTyping();
 
-    const answer =
-      data?.text ||
-      data?.message ||
-      "AURA AI did not return a response.";
-
-    /* Save/render exactly once */
     renderMessage(
       "assistant",
-      answer,
-      true
+      data.text || "I couldn't generate a response."
     );
 
-    speakAnswer(answer);
+    const current = getCurrentChat();
+
+    if (current) {
+      current.messages.push({
+        role: "assistant",
+        content: data.text || ""
+      });
+
+      saveChats();
+    }
+
   } catch (error) {
     removeTyping();
 
-    if (
-      error?.name === "AbortError"
-    ) {
-      return;
+    if (error.name === "AbortError") {
+      showToast("Generation stopped");
+    } else {
+      renderMessage(
+        "assistant",
+        `Sorry, something went wrong.\n\n${error.message}`
+      );
     }
-
-    console.error(
-      "AURA AI API error:",
-      error
-    );
-
-    renderMessage(
-      "assistant",
-      `⚠️ ${error?.message || "Something went wrong."}`,
-      true
-    );
   } finally {
-    abortController = null;
-    setGeneratingState(false);
-  }
-}
-
-/* =========================================================
-   PREPARE ATTACHMENTS
-   ========================================================= */
-
-async function prepareAttachmentsFrom(files) {
-  const result = [];
-
-  for (const file of files) {
-    result.push({
-      name: file.name,
-      type:
-        file.type ||
-        "application/octet-stream",
-      size: file.size,
-      data: await fileToBase64(file)
-    });
-  }
-
-  return result;
-}
-
-/* =========================================================
-   STOP GENERATION
-   ========================================================= */
-
-function stopGeneration() {
-  if (abortController) {
-    abortController.abort();
-  }
-
-  removeTyping();
-
-  setGeneratingState(false);
-}
-
-/* =========================================================
-   NEW CHAT
-   ========================================================= */
-
-function handleNewChat() {
-  if (isGenerating) {
-    stopGeneration();
-  }
-
-  createChat();
-
-  if (messageInput) {
+    controller = null;
+    generating = false;
+    updateSendState();
     messageInput.focus();
   }
 }
 
-/* =========================================================
-   KEYBOARD
-   ========================================================= */
-
-function handleInputKeydown(event) {
-  if (event.key !== "Enter") return;
-
-  if (event.shiftKey) {
-    return;
+function stopGeneration() {
+  if (controller) {
+    controller.abort();
   }
-
-  if (event.isComposing) {
-    return;
-  }
-
-  event.preventDefault();
-
-  sendMessage();
 }
 
-/* =========================================================
-   VOICE INPUT
-   ========================================================= */
+function newChat() {
+  const chat = createChat();
 
-async function toggleVoice() {
-  if (mediaRecorder) {
-    stopVoiceRecording();
+  chats.unshift(chat);
+  currentChatId = chat.id;
+
+  saveChats();
+
+  messages.innerHTML = "";
+  welcome.classList.remove("hidden");
+
+  messageInput.value = "";
+  attachments = [];
+
+  renderAttachments();
+  autoResize();
+  updateSendState();
+  renderHistory();
+
+  sidebar.classList.remove("open");
+  messageInput.focus();
+}
+
+function applyTheme() {
+  const current = localStorage.getItem("aura_theme") || "dark";
+
+  if (current === "light") {
+    document.documentElement.style.setProperty("--bg", "#f6f7fb");
+    document.documentElement.style.setProperty("--panel", "#ffffff");
+    document.documentElement.style.setProperty("--panel-2", "#f0f1f6");
+    document.documentElement.style.setProperty("--border", "rgba(0,0,0,.08)");
+    document.documentElement.style.setProperty("--text", "#111217");
+    document.documentElement.style.setProperty("--muted", "#70727d");
+    document.documentElement.style.setProperty("--user", "#ececf2");
+  } else {
+    document.documentElement.style.setProperty("--bg", "#0a0a0d");
+    document.documentElement.style.setProperty("--panel", "#101116");
+    document.documentElement.style.setProperty("--panel-2", "#15161c");
+    document.documentElement.style.setProperty("--border", "rgba(255,255,255,.09)");
+    document.documentElement.style.setProperty("--text", "#f5f5f7");
+    document.documentElement.style.setProperty("--muted", "#9699a5");
+    document.documentElement.style.setProperty("--user", "#1b1c23");
+  }
+}
+
+function toggleTheme() {
+  const current = localStorage.getItem("aura_theme") || "dark";
+
+  localStorage.setItem(
+    "aura_theme",
+    current === "dark" ? "light" : "dark"
+  );
+
+  applyTheme();
+}
+
+composer.addEventListener("submit", (event) => {
+  event.preventDefault();
+  sendMessage();
+});
+
+messageInput.addEventListener("input", () => {
+  autoResize();
+  updateSendState();
+});
+
+messageInput.addEventListener("compositionstart", () => {
+  composing = true;
+});
+
+messageInput.addEventListener("compositionend", () => {
+  composing = false;
+});
+
+messageInput.addEventListener("keydown", (event) => {
+  if (
+    event.key === "Enter" &&
+    !event.shiftKey &&
+    !event.isComposing &&
+    !composing
+  ) {
+    event.preventDefault();
+    sendMessage();
+  }
+});
+
+fileInput.addEventListener("change", () => {
+  handleFiles(fileInput.files);
+  fileInput.value = "";
+});
+
+newChatBtn.addEventListener("click", newChat);
+topNewChat.addEventListener("click", newChat);
+
+themeBtn.addEventListener("click", toggleTheme);
+
+clearBtn.addEventListener("click", () => {
+  if (!confirm("Clear all AURA AI chats?")) return;
+
+  chats = [];
+  currentChatId = null;
+
+  localStorage.removeItem("aura_chats");
+
+  newChat();
+  renderHistory();
+});
+
+searchInput.addEventListener("input", () => {
+  renderHistory(searchInput.value);
+});
+
+menuBtn.addEventListener("click", () => {
+  sidebar.classList.toggle("open");
+});
+
+document.querySelectorAll("[data-prompt]").forEach((button) => {
+  button.addEventListener("click", () => {
+    messageInput.value = button.dataset.prompt;
+    autoResize();
+    updateSendState();
+    messageInput.focus();
+  });
+});
+
+voiceBtn.addEventListener("click", async () => {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showToast("Voice recording is not supported");
     return;
   }
 
-  if (
-    !navigator.mediaDevices ||
-    !navigator.mediaDevices.getUserMedia
-  ) {
-    alert(
-      "Voice recording is not supported in this browser."
-    );
+  if (mediaRecorder?.state === "recording") {
+    mediaRecorder.stop();
     return;
   }
 
   try {
-    const stream =
-      await navigator.mediaDevices.getUserMedia({
-        audio: true
-      });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true
+    });
 
     audioChunks = [];
 
-    mediaRecorder =
-      new MediaRecorder(stream);
+    mediaRecorder = new MediaRecorder(stream);
 
-    mediaRecorder.ondataavailable =
-      (event) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      };
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size) {
+        audioChunks.push(event.data);
+      }
+    };
 
     mediaRecorder.onstop = () => {
-      stream
-        .getTracks()
-        .forEach((track) => track.stop());
+      stream.getTracks().forEach((track) => track.stop());
 
-      mediaRecorder = null;
+      const blob = new Blob(audioChunks, {
+        type: mediaRecorder.mimeType || "audio/webm"
+      });
 
-      if (voiceTimer) {
-        clearInterval(voiceTimer);
-        voiceTimer = null;
-      }
-
-      voiceSeconds = 0;
-
-      if (voiceBtn) {
-        voiceBtn.removeAttribute("data-recording");
-        voiceBtn.title = "Voice input";
-      }
-
-      /*
-       * Browser speech recognition is separate from
-       * MediaRecorder. The recorded audio is not
-       * automatically transcribed here.
-       */
+      showToast(`Voice recorded: ${Math.round(blob.size / 1024)} KB`);
+      voiceBtn.classList.remove("recording");
     };
 
     mediaRecorder.start();
+    voiceBtn.classList.add("recording");
+    showToast("Recording... tap again to stop");
 
-    voiceSeconds = 0;
-
-    if (voiceBtn) {
-      voiceBtn.setAttribute(
-        "data-recording",
-        "true"
-      );
-
-      voiceBtn.title = "Stop recording";
-    }
-
-    voiceTimer = setInterval(() => {
-      voiceSeconds++;
-
-      if (voiceBtn) {
-        voiceBtn.title =
-          `Recording ${voiceSeconds}s`;
-      }
-    }, 1000);
-  } catch (error) {
-    console.error(error);
-
-    alert(
-      "Microphone permission is required."
-    );
+  } catch {
+    showToast("Microphone permission denied");
   }
-}
+});
 
-function stopVoiceRecording() {
-  if (
-    mediaRecorder &&
-    mediaRecorder.state !== "inactive"
-  ) {
-    mediaRecorder.stop();
-  }
-}
-
-/* =========================================================
-   TEXT-TO-SPEECH
-   ========================================================= */
-
-function speakAnswer(text) {
-  if (
-    !("speechSynthesis" in window) ||
-    !text
-  ) {
-    return;
-  }
-
-  try {
-    window.speechSynthesis.cancel();
-
-    const utterance =
-      new SpeechSynthesisUtterance(
-        String(text).slice(0, 5000)
-      );
-
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-
-    window.speechSynthesis.speak(
-      utterance
-    );
-  } catch (error) {
-    console.warn(
-      "Speech synthesis failed:",
-      error
-    );
-  }
-}
-
-/* =========================================================
-   MOBILE SIDEBAR
-   ========================================================= */
-
-function openSidebar() {
-  sidebar?.classList.add("open");
-  overlay?.classList.add("show");
-}
-
-function closeSidebar() {
-  sidebar?.classList.remove("open");
-  overlay?.classList.remove("show");
-}
-
-/* =========================================================
-   EVENTS
-   ========================================================= */
-
-composer?.addEventListener(
-  "submit",
-  (event) => {
-    event.preventDefault();
-    sendMessage();
-  }
-);
-
-sendBtn?.addEventListener(
-  "click",
-  (event) => {
-    event.preventDefault();
-    sendMessage();
-  }
-);
-
-messageInput?.addEventListener(
-  "keydown",
-  handleInputKeydown
-);
-
-messageInput?.addEventListener(
-  "input",
-  autoResizeTextarea
-);
-
-newChatBtn?.addEventListener(
-  "click",
-  handleNewChat
-);
-
-attachBtn?.addEventListener(
-  "click",
-  () => fileInput?.click()
-);
-
-fileInput?.addEventListener(
-  "change",
-  (event) => {
-    addFiles(event.target.files);
-
-    /* Allow selecting same file again */
-    event.target.value = "";
-  }
-);
-
-voiceBtn?.addEventListener(
-  "click",
-  toggleVoice
-);
-
-menuBtn?.addEventListener(
-  "click",
-  openSidebar
-);
-
-overlay?.addEventListener(
-  "click",
-  closeSidebar
-);
-
-/* Suggestion buttons */
-document.addEventListener(
-  "click",
-  (event) => {
-    const button =
-      event.target.closest(".suggestion");
-
-    if (!button) return;
-
-    const text =
-      button.dataset.prompt ||
-      button.textContent.trim();
-
-    if (!messageInput) return;
-
-    messageInput.value = text;
-
-    autoResizeTextarea();
-
-    messageInput.focus();
-  }
-);
-
-/* =========================================================
-   INITIALIZE
-   ========================================================= */
-
-loadChats();
+applyTheme();
 
 if (chats.length) {
-  currentChat =
-    chats
-      .slice()
-      .sort(
-        (a, b) =>
-          b.updatedAt - a.updatedAt
-      )[0];
-
-  renderHistory();
-  renderCurrentChat();
-} else {
-  renderHistory();
-
-  if (welcome) {
-    welcome.style.display = "flex";
-  }
+  currentChatId = chats[0].id;
 }
 
-autoResizeTextarea();
-
-console.log(
-  "AURA AI initialized successfully."
-);
+renderHistory();
+renderChat();
+updateSendState();
