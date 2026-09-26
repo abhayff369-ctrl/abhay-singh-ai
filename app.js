@@ -1,1195 +1,2124 @@
-/* ============================================================
-   AURA AI — app.js
-   Developer: Abhay Singh
-   ============================================================ */
+// ============================================================
+// ABHAY SINGH AI
+// Multimodal Frontend
+// ============================================================
 
-(() => {
-  'use strict';
+const $ = selector =>
+  document.querySelector(selector);
 
-  // ---------- CONSTANTS ----------
-  const STORAGE = {
-    THEME: 'aura.theme',
-    CHATS: 'aura.chats',
-    CURRENT: 'aura.current',
-    SETTINGS: 'aura.settings'
-  };
-  const MAX_FILE_SIZE = 8 * 1024 * 1024;
-  const ACCEPTED_IMAGE = /^image\//;
-  const ACCEPTED_DOC = /\.(pdf|txt|json|csv|md|log|js|ts|py|html|css|xml|yaml|yml)$/i;
+const $$ = selector =>
+  [...document.querySelectorAll(selector)];
 
-  // ---------- STATE ----------
-  const state = {
-    conversations: [],
-    currentId: null,
-    model: 'flash',
-    isGenerating: false,
-    abortController: null,
-    attachments: [],
-    settings: {
-      theme: 'dark',
-      enterToSend: true,
-      voiceMode: false
-    },
-    // IME composition flag — prevents Enter from sending while typing Hindi/Japanese/Chinese
-    composing: false,
-    mediaRecorder: null,
-    recordedChunks: [],
-    recordingStart: 0,
-    recordingTimer: null
-  };
+// ------------------------------------------------------------
+// State
+// ------------------------------------------------------------
 
-  // ---------- DOM ----------
-  const $ = (s, r = document) => r.querySelector(s);
-  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const state = {
 
-  const dom = {
-    sidebar: $('#sidebar'),
-    backdrop: $('#backdrop'),
-    menuBtn: $('#menuBtn'),
-    sidebarClose: $('#sidebarClose'),
-    newChatBtn: $('#newChatBtn'),
-    headerNewChat: $('#headerNewChat'),
-    searchInput: $('#searchInput'),
-    searchClear: $('#searchClear'),
-    chatHistory: $('#chatHistory'),
-    settingsBtn: $('#settingsBtn'),
-    themeBtn: $('#themeBtn'),
-    themeIcon: $('#themeIcon'),
-    clearAllBtn: $('#clearAllBtn'),
+  messages: [],
 
-    modelBadge: $('#modelBadge'),
-    modelMenu: $('#modelMenu'),
-    modelLabel: $('#modelLabel'),
-    statusPill: $('#statusPill'),
+  attachments: [],
 
-    welcome: $('#welcome'),
-    messages: $('#messages'),
-    chatScroll: $('#chatScroll'),
+  chats:
+    JSON.parse(
+      localStorage.getItem("abhay_chats") || "[]"
+    ),
 
-    composer: $('#composer'),          // <form>
-    composerInput: $('#composerInput'),
-    sendBtn: $('#sendBtn'),
-    attachBtn: $('#attachBtn'),
-    attachMenu: $('#attachMenu'),
-    imageInput: $('#imageInput'),
-    fileInput: $('#fileInput'),
-    micBtn: $('#micBtn'),
-    attachments: $('#attachments'),
-    charCounter: $('#charCounter'),
+  theme:
+    localStorage.getItem("abhay_theme") || "dark",
 
-    recordingOverlay: $('#recordingOverlay'),
-    recordingTime: $('#recordingTime'),
-    recordingCancel: $('#recordingCancel'),
-    recordingSend: $('#recordingSend'),
+  selectedModel:
+    localStorage.getItem("abhay_model") ||
+    "gemini-3.8-flash",
 
-    lightbox: $('#lightbox'),
-    lightboxImg: $('#lightboxImg'),
-    lightboxClose: $('#lightboxClose'),
+  recording: false,
 
-    settingsModal: $('#settingsModal'),
-    settingsClose: $('#settingsClose'),
-    themeSegmented: $('#themeSegmented'),
-    switchEnter: $('#switchEnter'),
-    switchVoiceMode: $('#switchVoiceMode'),
-    clearFromSettings: $('#clearFromSettings'),
+  mediaRecorder: null,
 
-    toasts: $('#toasts')
-  };
+  audioChunks: [],
 
-  // ---------- UTILS ----------
-  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  const escapeHtml = (s = '') => String(s).replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[c]));
-  const formatBytes = (n) => {
-    if (!n) return '0 B';
-    const u = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(n) / Math.log(1024));
-    return (n / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + u[i];
-  };
-  const formatTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const debounce = (fn, ms = 200) => {
-    let t;
-    return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
-  };
-  const dateGroup = (ts) => {
-    const now = new Date();
-    const d = new Date(ts);
-    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const startYesterday = startToday - 86400000;
-    const startWeek = startToday - 7 * 86400000;
-    if (d.getTime() >= startToday) return 'Today';
-    if (d.getTime() >= startYesterday) return 'Yesterday';
-    if (d.getTime() >= startWeek) return 'Previous 7 days';
-    return 'Older';
-  };
+  recognition: null,
 
-  // ---------- TOASTS ----------
-  function toast(message, kind = 'info', ms = 2800) {
-    const el = document.createElement('div');
-    el.className = `toast ${kind}`;
-    el.innerHTML = `<span class="toast-dot"></span><span>${escapeHtml(message)}</span>`;
-    dom.toasts.appendChild(el);
-    setTimeout(() => {
-      el.classList.add('leaving');
-      setTimeout(() => el.remove(), 240);
-    }, ms);
+  speaking: false
+};
+
+// ------------------------------------------------------------
+// Elements
+// ------------------------------------------------------------
+
+const messageInput =
+  $("#messageInput");
+
+const sendBtn =
+  $("#sendBtn");
+
+const messagesEl =
+  $("#messages");
+
+const welcome =
+  $("#welcome");
+
+const attachmentPreview =
+  $("#attachmentPreview");
+
+const attachMenu =
+  $("#attachMenu");
+
+const toast =
+  $("#toast");
+
+// ------------------------------------------------------------
+// Theme
+// ------------------------------------------------------------
+
+function applyTheme(theme) {
+
+  if (theme === "system") {
+
+    document.documentElement.removeAttribute(
+      "data-theme"
+    );
+
+  } else {
+
+    document.documentElement.setAttribute(
+      "data-theme",
+      theme
+    );
   }
 
-  // ---------- STORAGE ----------
-  function load() {
+  state.theme = theme;
+
+  localStorage.setItem(
+    "abhay_theme",
+    theme
+  );
+}
+
+applyTheme(state.theme);
+
+// ------------------------------------------------------------
+// Toast
+// ------------------------------------------------------------
+
+let toastTimer;
+
+function showToast(text) {
+
+  clearTimeout(toastTimer);
+
+  toast.textContent = text;
+
+  toast.classList.add("show");
+
+  toastTimer = setTimeout(() => {
+    toast.classList.remove("show");
+  }, 2600);
+}
+
+// ------------------------------------------------------------
+// Escape HTML
+// ------------------------------------------------------------
+
+function escapeHTML(text) {
+
+  return String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+// ------------------------------------------------------------
+// Simple Markdown renderer
+// ------------------------------------------------------------
+
+function renderMarkdown(text) {
+
+  let html =
+    escapeHTML(text);
+
+  // Code blocks
+  html =
+    html.replace(
+      /```([\s\S]*?)```/g,
+      (_, code) => {
+
+        return `
+          <pre><code>${code.trim()}</code></pre>
+        `;
+      }
+    );
+
+  // Bold
+  html =
+    html.replace(
+      /\*\*(.*?)\*\*/g,
+      "<strong>$1</strong>"
+    );
+
+  // Italic
+  html =
+    html.replace(
+      /\*(.*?)\*/g,
+      "<em>$1</em>"
+    );
+
+  // Inline code
+  html =
+    html.replace(
+      /`([^`]+)`/g,
+      "<code>$1</code>"
+    );
+
+  // Links
+  html =
+    html.replace(
+      /(https?:\/\/[^\s<]+)/g,
+      '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+    );
+
+  // New lines
+  html =
+    html.replace(/\n/g, "<br>");
+
+  return html;
+}
+
+// ------------------------------------------------------------
+// Format size
+// ------------------------------------------------------------
+
+function formatSize(bytes) {
+
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// ------------------------------------------------------------
+// File -> Base64
+// ------------------------------------------------------------
+
+function fileToBase64(file) {
+
+  return new Promise(
+    (resolve, reject) => {
+
+      const reader =
+        new FileReader();
+
+      reader.onload = () => {
+
+        const result =
+          String(reader.result);
+
+        const comma =
+          result.indexOf(",");
+
+        resolve(
+          comma >= 0
+            ? result.slice(comma + 1)
+            : result
+        );
+      };
+
+      reader.onerror = () =>
+        reject(
+          new Error(
+            "Could not read file."
+          )
+        );
+
+      reader.readAsDataURL(file);
+    }
+  );
+}
+
+// ------------------------------------------------------------
+// Validate file
+// ------------------------------------------------------------
+
+const MAX_FILE_SIZE =
+  12 * 1024 * 1024;
+
+const MAX_TOTAL =
+  15 * 1024 * 1024;
+
+function validateFile(file) {
+
+  if (!file) {
+    return "Invalid file.";
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    return `${file.name} is larger than 12 MB.`;
+  }
+
+  const allowed =
+    file.type.startsWith("image/") ||
+    file.type.startsWith("audio/") ||
+    file.type.startsWith("video/") ||
+    [
+      "application/pdf",
+      "text/plain",
+      "text/csv",
+      "text/html",
+      "text/xml",
+      "application/json",
+      "application/xml"
+    ].includes(file.type);
+
+  if (!allowed) {
+    return `${file.name}: unsupported file type.`;
+  }
+
+  return null;
+}
+
+// ------------------------------------------------------------
+// Add files
+// ------------------------------------------------------------
+
+async function addFiles(fileList) {
+
+  const files =
+    [...fileList];
+
+  for (const file of files) {
+
+    const error =
+      validateFile(file);
+
+    if (error) {
+      showToast(error);
+      continue;
+    }
+
+    const currentSize =
+      state.attachments.reduce(
+        (sum, item) =>
+          sum + item.size,
+        0
+      );
+
+    if (
+      currentSize + file.size >
+      MAX_TOTAL
+    ) {
+      showToast(
+        "Total attachments cannot exceed 15 MB."
+      );
+
+      break;
+    }
+
     try {
-      const chats = JSON.parse(localStorage.getItem(STORAGE.CHATS) || '[]');
-      if (Array.isArray(chats)) state.conversations = chats;
-    } catch { state.conversations = []; }
-    state.currentId = localStorage.getItem(STORAGE.CURRENT) || null;
-    try {
-      const s = JSON.parse(localStorage.getItem(STORAGE.SETTINGS) || '{}');
-      Object.assign(state.settings, s);
-    } catch {}
-    const theme = localStorage.getItem(STORAGE.THEME);
-    if (theme) state.settings.theme = theme;
-  }
-  function saveChats() {
-    try { localStorage.setItem(STORAGE.CHATS, JSON.stringify(state.conversations)); } catch {}
-  }
-  function saveCurrent() {
-    if (state.currentId) localStorage.setItem(STORAGE.CURRENT, state.currentId);
-    else localStorage.removeItem(STORAGE.CURRENT);
-  }
-  function saveSettings() {
-    try { localStorage.setItem(STORAGE.SETTINGS, JSON.stringify(state.settings)); } catch {}
-  }
 
-  // ---------- THEME ----------
-  function applyTheme(mode) {
-    let effective = mode;
-    if (mode === 'system') {
-      effective = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    }
-    document.documentElement.setAttribute('data-theme', effective);
-    state.settings.theme = mode;
-    localStorage.setItem(STORAGE.THEME, mode);
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = effective === 'dark' ? '#0a0a12' : '#f6f6fb';
-    if (dom.themeIcon) {
-      dom.themeIcon.innerHTML = effective === 'dark'
-        ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
-        : '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
-    }
-    $$('#themeSegmented button').forEach(b => b.classList.toggle('active', b.dataset.value === mode));
-  }
+      const data =
+        await fileToBase64(file);
 
-  // ---------- MARKDOWN ----------
-  function renderMarkdown(src) {
-    if (!src) return '';
-    let text = String(src).replace(/\r\n/g, '\n');
-    const codeBlocks = [];
-    text = text.replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
-      const idx = codeBlocks.length;
-      codeBlocks.push({ lang: lang || 'code', code });
-      return `\u0000CB${idx}\u0000`;
-    });
-    text = escapeHtml(text);
-    text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-    text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-    text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-    text = text.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-    text = text.replace(/^\s*[-*] (.+)$/gm, '<li>$1</li>');
-    text = text.replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, '<ul>$1</ul>');
-    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    text = text.replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, '$1<em>$2</em>');
-    text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
-      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-    text = text.split(/\n{2,}/).map(block => {
-      const t = block.trim();
-      if (!t) return '';
-      if (/^<(h[1-3]|ul|ol|blockquote|pre|table|div)/.test(t)) return t;
-      if (t.startsWith('\u0000CB')) return t;
-      return `<p>${t.replace(/\n/g, '<br>')}</p>`;
-    }).join('');
-    text = text.replace(/\u0000CB(\d+)\u0000/g, (_, i) => {
-      const { lang, code } = codeBlocks[+i];
-      const id = 'code-' + uid();
-      return `<div class="code-wrap">
-        <div class="code-head">
-          <span>${escapeHtml(lang)}</span>
-          <button class="code-copy" type="button" data-code-id="${id}" aria-label="Copy code">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy
-          </button>
-        </div>
-        <pre><code id="${id}">${escapeHtml(code)}</code></pre>
-      </div>`;
-    });
-    return text;
-  }
+      state.attachments.push({
+        id:
+          crypto.randomUUID
+            ? crypto.randomUUID()
+            : String(Date.now() + Math.random()),
 
-  // ---------- CONVERSATIONS ----------
-  function createConversation() {
-    const conv = {
-      id: uid(),
-      title: 'New chat',
-      messages: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-    state.conversations.unshift(conv);
-    state.currentId = conv.id;
-    saveChats(); saveCurrent();
-    return conv;
-  }
-  function getCurrent() {
-    return state.conversations.find(c => c.id === state.currentId) || null;
-  }
-  function switchTo(id) {
-    state.currentId = id;
-    saveCurrent();
-    renderHistory();
-    renderMessages();
-    closeSidebar();
-  }
-  function deleteConversation(id) {
-    const i = state.conversations.findIndex(c => c.id === id);
-    if (i < 0) return;
-    state.conversations.splice(i, 1);
-    if (state.currentId === id) {
-      state.currentId = state.conversations[0]?.id || null;
-      if (!state.currentId) createConversation();
-    }
-    saveChats(); saveCurrent();
-    renderHistory();
-    renderMessages();
-    toast('Conversation deleted', 'success');
-  }
-  function renameConversation(id, title) {
-    const c = state.conversations.find(c => c.id === id);
-    if (!c) return;
-    c.title = title.slice(0, 80) || 'Untitled';
-    c.updatedAt = Date.now();
-    saveChats();
-    renderHistory();
-  }
-  function startNewChat() {
-    const cur = getCurrent();
-    if (cur && cur.messages.length === 0) {
-      dom.composerInput.focus();
-      return;
-    }
-    createConversation();
-    renderHistory();
-    renderMessages();
-    dom.composerInput.value = '';
-    autoResize();
-    updateComposerState();
-    dom.composerInput.focus();
-    closeSidebar();
-    toast('New chat started', 'success');
-  }
+        name: file.name,
 
-  // ---------- RENDER: HISTORY ----------
-  function renderHistory(filter = '') {
-    const q = filter.trim().toLowerCase();
-    const convs = state.conversations
-      .filter(c => !q || c.title.toLowerCase().includes(q) ||
-        c.messages.some(m => (m.content || '').toLowerCase().includes(q)))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+        mimeType:
+          file.type ||
+          "application/octet-stream",
 
-    if (convs.length === 0) {
-      dom.chatHistory.innerHTML = `<div class="hist-empty">${q ? 'No matching conversations' : 'No conversations yet'}</div>`;
-      return;
-    }
-    const groups = {};
-    convs.forEach(c => {
-      const g = dateGroup(c.updatedAt);
-      (groups[g] = groups[g] || []).push(c);
-    });
-    const order = ['Today', 'Yesterday', 'Previous 7 days', 'Older'];
-    let html = '';
-    order.forEach(label => {
-      if (!groups[label]) return;
-      html += `<div class="hist-group"><div class="hist-label">${label}</div>`;
-      groups[label].forEach(c => {
-        const active = c.id === state.currentId ? ' active' : '';
-        const title = escapeHtml(c.title || 'New chat');
-        html += `<div class="hist-item${active}" data-id="${c.id}" role="button" tabindex="0" aria-label="Open conversation: ${title}">
-          <svg class="hi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span class="hi-title">${title}</span>
-          <button class="hi-menu" type="button" data-menu="${c.id}" aria-label="Options">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-          </button>
-        </div>`;
+        size: file.size,
+
+        data,
+
+        preview:
+          file.type.startsWith("image/")
+            ? URL.createObjectURL(file)
+            : null
       });
-      html += `</div>`;
-    });
-    dom.chatHistory.innerHTML = html;
-  }
 
-  // ---------- RENDER: MESSAGES ----------
-  function renderMessages() {
-    const conv = getCurrent();
-    const has = conv && conv.messages.length > 0;
-    dom.welcome.hidden = has;
-    dom.messages.hidden = !has;
-    if (!has) { dom.messages.innerHTML = ''; return; }
+    } catch (error) {
 
-    dom.messages.innerHTML = conv.messages.map((m, i) => renderMessage(m, i)).join('');
-    decorateErrorMessages();
-
-    requestAnimationFrame(() => {
-      dom.chatScroll.scrollTop = dom.chatScroll.scrollHeight;
-    });
-  }
-
-  function renderMessage(m, idx) {
-    const isUser = m.role === 'user';
-    const name = isUser ? 'You' : 'AURA AI';
-    const avatar = isUser
-      ? '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-3.34 0-10 1.67-10 5v1h20v-1c0-3.33-6.66-5-10-5Z"/></svg>'
-      : '✦';
-
-    const attachHtml = (m.attachments && m.attachments.length)
-      ? `<div class="msg-attachments">${m.attachments.map(a => renderMessageAttachment(a)).join('')}</div>`
-      : '';
-
-    const bodyHtml = isUser
-      ? `<div class="msg-content">${escapeHtml(m.content || '')}</div>`
-      : `<div class="msg-content">${renderMarkdown(m.content || '')}</div>`;
-
-    const actions = isUser
-      ? `<div class="msg-actions">
-          <button class="msg-action" type="button" data-action="copy" data-idx="${idx}" aria-label="Copy">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy
-          </button>
-          <button class="msg-action" type="button" data-action="resend" data-idx="${idx}" aria-label="Edit and resend">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>
-            Edit
-          </button>
-        </div>`
-      : `<div class="msg-actions">
-          <button class="msg-action" type="button" data-action="copy" data-idx="${idx}" aria-label="Copy">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy
-          </button>
-          <button class="msg-action" type="button" data-action="speak" data-idx="${idx}" aria-label="Speak">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-            Speak
-          </button>
-          <button class="msg-action" type="button" data-action="regenerate" data-idx="${idx}" aria-label="Regenerate">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 18.36 5.64L23 10"/></svg>
-            Regenerate
-          </button>
-        </div>`;
-
-    return `<div class="msg ${isUser ? 'user' : 'assistant'}" data-idx="${idx}">
-      <div class="msg-avatar" aria-hidden="true">${avatar}</div>
-      <div class="msg-body">
-        <div class="msg-name">${name} <span class="time">${formatTime(m.timestamp || Date.now())}</span></div>
-        ${attachHtml}
-        ${bodyHtml}
-        ${actions}
-      </div>
-    </div>`;
-  }
-
-  function renderMessageAttachment(a) {
-    if (a.kind === 'image' && a.dataUrl) {
-      return `<div class="msg-attach"><img src="${a.dataUrl}" alt="${escapeHtml(a.name)}" data-lightbox="${a.dataUrl}" loading="lazy" /></div>`;
+      showToast(
+        error.message
+      );
     }
-    return `<div class="msg-attach"><div class="msg-attach-file">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-      <span>${escapeHtml(a.name)}</span>
-    </div></div>`;
   }
 
-  // ---------- COMPOSER STATE ----------
-  function autoResize() {
-    const ta = dom.composerInput;
-    ta.style.height = 'auto';
-    ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
-  }
+  renderAttachments();
 
-  // Single source of truth for the send button state.
-  // Called on: input, attachments change, isGenerating change, after send completes.
-  function updateComposerState() {
-    const hasText = dom.composerInput.value.trim().length > 0;
-    const hasAttachments = state.attachments.length > 0;
-    const canSend = (hasText || hasAttachments) && !state.isGenerating;
+  updateSendButton();
+}
 
-    dom.sendBtn.disabled = !canSend && !state.isGenerating;
-    // When generating, the button becomes the STOP button (never disabled)
-    if (state.isGenerating) {
-      dom.sendBtn.disabled = false;
-      dom.sendBtn.classList.add('generating');
-      dom.sendBtn.setAttribute('aria-label', 'Stop generating');
-      dom.sendBtn.setAttribute('title', 'Stop generating');
-    } else {
-      dom.sendBtn.classList.remove('generating');
-      dom.sendBtn.setAttribute('aria-label', 'Send message');
-      dom.sendBtn.setAttribute('title', 'Send message');
-    }
+// ------------------------------------------------------------
+// Render attachments
+// ------------------------------------------------------------
 
-    const count = dom.composerInput.value.length;
-    dom.charCounter.textContent = count > 3500 ? `${count} / 12000` : '';
-  }
+function renderAttachments() {
 
-  // ---------- ATTACHMENTS ----------
-  function addAttachments(files) {
-    const added = [];
-    for (const f of files) {
-      if (f.size > MAX_FILE_SIZE) { toast(`${f.name} is too large (max ${formatBytes(MAX_FILE_SIZE)})`, 'error'); continue; }
-      const isImage = ACCEPTED_IMAGE.test(f.type);
-      const isDoc = ACCEPTED_DOC.test(f.name) || f.type === 'application/pdf';
-      if (!isImage && !isDoc) { toast(`${f.name}: unsupported file type`, 'error'); continue; }
-      added.push({ id: uid(), file: f, name: f.name, size: f.size, type: f.type, kind: isImage ? 'image' : 'file' });
-    }
-    state.attachments.push(...added);
-    renderAttachments();
-    updateComposerState();
-  }
+  attachmentPreview.innerHTML = "";
 
-  function renderAttachments() {
-    if (!state.attachments.length) {
-      dom.attachments.hidden = true;
-      dom.attachments.innerHTML = '';
-      return;
-    }
-    dom.attachments.hidden = false;
-    dom.attachments.innerHTML = state.attachments.map(a => {
-      const preview = a.kind === 'image' && a.dataUrl ? `<img src="${a.dataUrl}" alt="" />` : '';
-      return `<div class="attach-chip" data-id="${a.id}">
-        ${preview}
-        <div class="attach-chip-info">
-          <div class="attach-chip-name">${escapeHtml(a.name)}</div>
-          <div class="attach-chip-size">${formatBytes(a.size)}</div>
-        </div>
-        <button class="attach-chip-remove" type="button" data-remove="${a.id}" aria-label="Remove attachment">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  for (
+    const attachment of state.attachments
+  ) {
+
+    const card =
+      document.createElement("div");
+
+    card.className =
+      "attachment-card";
+
+    if (
+      !attachment.mimeType.startsWith(
+        "image/"
+      )
+    ) {
+
+      card.classList.add("file");
+
+      card.innerHTML = `
+        <strong>
+          📄 ${escapeHTML(
+            attachment.name
+          )}
+        </strong>
+
+        <small>
+          ${formatSize(
+            attachment.size
+          )}
+        </small>
+
+        <button
+          class="remove-attachment"
+          data-remove="${attachment.id}"
+          aria-label="Remove attachment"
+        >
+          ×
         </button>
-      </div>`;
-    }).join('');
-  }
+      `;
 
-  function readAsDataUrl(file) {
-    return new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(fr.result);
-      fr.onerror = reject;
-      fr.readAsDataURL(file);
-    });
-  }
+    } else {
 
-  async function addAttachmentsAndPreview(files) {
-    const before = state.attachments.length;
-    addAttachments(files);
-    const newly = state.attachments.slice(before);
-    await Promise.all(newly.filter(a => a.kind === 'image').map(async a => {
-      try { a.dataUrl = await readAsDataUrl(a.file); } catch {}
-    }));
-    renderAttachments();
-  }
+      card.innerHTML = `
+        <img
+          src="${attachment.preview}"
+          alt="${escapeHTML(
+            attachment.name
+          )}"
+        >
 
-  // ---------- SEND (single canonical path) ----------
-  async function sendMessage() {
-    // Hard guards — prevents double-submit and empty sends
-    if (state.isGenerating) return;
-    const text = dom.composerInput.value.trim();
-    if (!text && state.attachments.length === 0) return;
-
-    const conv = getCurrent() || createConversation();
-
-    const atts = state.attachments.map(a => ({
-      id: a.id, name: a.name, size: a.size, type: a.type, kind: a.kind, dataUrl: a.dataUrl || null
-    }));
-
-    // Push user message to model
-    conv.messages.push({
-      role: 'user',
-      content: text,
-      timestamp: Date.now(),
-      attachments: atts
-    });
-    if (conv.messages.filter(m => m.role === 'user').length === 1) {
-      conv.title = (text || atts[0]?.name || 'New chat').slice(0, 60);
+        <button
+          class="remove-attachment"
+          data-remove="${attachment.id}"
+          aria-label="Remove image"
+        >
+          ×
+        </button>
+      `;
     }
-    conv.updatedAt = Date.now();
-    saveChats();
 
-    // Clear composer NOW (so user can't re-send the same text)
-    dom.composerInput.value = '';
-    state.attachments = [];
+    attachmentPreview.appendChild(card);
+  }
+}
+
+// ------------------------------------------------------------
+// Remove attachment
+// ------------------------------------------------------------
+
+attachmentPreview.addEventListener(
+  "click",
+  event => {
+
+    const button =
+      event.target.closest(
+        "[data-remove]"
+      );
+
+    if (!button) return;
+
+    const id =
+      button.dataset.remove;
+
+    const item =
+      state.attachments.find(
+        x => x.id === id
+      );
+
+    if (item?.preview) {
+      URL.revokeObjectURL(
+        item.preview
+      );
+    }
+
+    state.attachments =
+      state.attachments.filter(
+        x => x.id !== id
+      );
+
     renderAttachments();
-    autoResize();
-    updateComposerState();
 
-    // Render user message + show thinking
-    renderMessages();
-    renderHistory();
+    updateSendButton();
+  }
+);
 
-    state.isGenerating = true;
-    updateComposerState();
-    showThinking();
+// ------------------------------------------------------------
+// Attach menu
+// ------------------------------------------------------------
 
-    const history = conv.messages.slice(0, -1).map(m => ({
-      role: m.role,
-      content: m.content || ''
-    }));
+$("#attachBtn").addEventListener(
+  "click",
+  event => {
 
-    state.abortController = new AbortController();
+    event.stopPropagation();
 
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text || '(attachment)',
-          history,
-          model: state.model
-        }),
-        signal: state.abortController.signal
-      });
+    attachMenu.classList.toggle(
+      "show"
+    );
+  }
+);
 
-      let data = null;
-      try { data = await res.json(); } catch {}
+document.addEventListener(
+  "click",
+  event => {
 
-      hideThinking();
+    if (
+      !attachMenu.contains(event.target) &&
+      event.target !== $("#attachBtn")
+    ) {
 
-      if (!res.ok || !data || data.success === false) {
-        const errText = (data && (data.error || data.message)) ||
-          `Request failed (${res.status}${res.statusText ? ' ' + res.statusText : ''})`;
-        pushAssistantError(conv, errText);
-      } else {
-        const reply = data.message || data.reply || data.content || '';
-        if (!reply) {
-          pushAssistantError(conv, 'Empty response from server.');
-        } else {
-          conv.messages.push({
-            role: 'assistant',
-            content: reply,
-            timestamp: Date.now(),
-            model: data.model || state.model
-          });
-          conv.updatedAt = Date.now();
-          saveChats();
-          renderMessages();
-          renderHistory();
-          if (state.settings.voiceMode) speak(reply);
+      attachMenu.classList.remove(
+        "show"
+      );
+    }
+  }
+);
+
+// ------------------------------------------------------------
+// File buttons
+// ------------------------------------------------------------
+
+$("#photoBtn").onclick = () => {
+
+  attachMenu.classList.remove("show");
+
+  $("#imageInput").click();
+};
+
+$("#cameraBtn").onclick = () => {
+
+  attachMenu.classList.remove("show");
+
+  $("#cameraInput").click();
+};
+
+$("#fileBtn").onclick = () => {
+
+  attachMenu.classList.remove("show");
+
+  $("#fileInput").click();
+};
+
+$("#voiceMessageBtn").onclick = () => {
+
+  attachMenu.classList.remove("show");
+
+  startAudioRecording();
+};
+
+$("#imageInput").addEventListener(
+  "change",
+  event => {
+
+    addFiles(event.target.files);
+
+    event.target.value = "";
+  }
+);
+
+$("#cameraInput").addEventListener(
+  "change",
+  event => {
+
+    addFiles(event.target.files);
+
+    event.target.value = "";
+  }
+);
+
+$("#fileInput").addEventListener(
+  "change",
+  event => {
+
+    addFiles(event.target.files);
+
+    event.target.value = "";
+  }
+);
+
+// ------------------------------------------------------------
+// Clipboard image paste
+// ------------------------------------------------------------
+
+document.addEventListener(
+  "paste",
+  event => {
+
+    const items =
+      [...(event.clipboardData?.items || [])];
+
+    for (const item of items) {
+
+      if (
+        item.type.startsWith("image/")
+      ) {
+
+        const file =
+          item.getAsFile();
+
+        if (file) {
+          addFiles([file]);
+
+          showToast(
+            "Image pasted successfully."
+          );
         }
       }
-    } catch (err) {
-      hideThinking();
-      if (err.name === 'AbortError') {
-        conv.messages.push({
-          role: 'assistant',
-          content: '(Response stopped)',
-          timestamp: Date.now()
-        });
-        saveChats();
-        renderMessages();
-      } else {
-        pushAssistantError(conv, 'Network error. Please check your connection and try again.');
-      }
-    } finally {
-      state.isGenerating = false;
-      state.abortController = null;
-      updateComposerState();
-      dom.composerInput.focus();
     }
   }
+);
 
-  function pushAssistantError(conv, message) {
-    conv.messages.push({
-      role: 'assistant',
-      error: true,
-      content: message,
-      timestamp: Date.now()
-    });
-    saveChats();
-    renderMessages();
-  }
+// ------------------------------------------------------------
+// Drag & drop
+// ------------------------------------------------------------
 
-  function showThinking() {
-    if (document.getElementById('thinkingMsg')) return;
-    const el = document.createElement('div');
-    el.id = 'thinkingMsg';
-    el.className = 'msg assistant';
-    el.innerHTML = `
-      <div class="msg-avatar" aria-hidden="true">✦</div>
-      <div class="msg-body">
-        <div class="msg-name">AURA AI</div>
-        <div class="thinking">
-          <span class="thinking-star">✦</span>
-          <span class="thinking-text">Thinking<span class="thinking-dots"><span></span><span></span><span></span></span></span>
-        </div>
-      </div>`;
-    dom.messages.appendChild(el);
-    dom.chatScroll.scrollTop = dom.chatScroll.scrollHeight;
-  }
-  function hideThinking() {
-    document.getElementById('thinkingMsg')?.remove();
-  }
+const dragOverlay =
+  document.createElement("div");
 
-  function decorateErrorMessages() {
-    $$('.msg.assistant').forEach(el => {
-      const idx = +el.dataset.idx;
-      const conv = getCurrent();
-      const m = conv?.messages[idx];
-      if (!m || !m.error) return;
-      const contentEl = el.querySelector('.msg-content');
-      if (!contentEl || contentEl.dataset.errored) return;
-      contentEl.dataset.errored = '1';
-      contentEl.innerHTML = `
-        <div class="error-card">
-          <div class="error-card-icon">⚠️</div>
+dragOverlay.className =
+  "drag-overlay";
+
+dragOverlay.innerHTML =
+  "<strong>Drop files here</strong>";
+
+Object.assign(
+  dragOverlay.style,
+  {
+    position: "fixed",
+    inset: "0",
+    zIndex: "9999",
+    display: "none",
+    placeItems: "center",
+    background: "rgba(0,0,0,.55)",
+    backdropFilter: "blur(8px)",
+    color: "white",
+    fontSize: "24px"
+  }
+);
+
+document.body.appendChild(
+  dragOverlay
+);
+
+let dragCounter = 0;
+
+document.addEventListener(
+  "dragenter",
+  event => {
+
+    event.preventDefault();
+
+    dragCounter++;
+
+    dragOverlay.style.display =
+      "grid";
+  }
+);
+
+document.addEventListener(
+  "dragover",
+  event => {
+
+    event.preventDefault();
+  }
+);
+
+document.addEventListener(
+  "dragleave",
+  event => {
+
+    event.preventDefault();
+
+    dragCounter--;
+
+    if (dragCounter <= 0) {
+
+      dragCounter = 0;
+
+      dragOverlay.style.display =
+        "none";
+    }
+  }
+);
+
+document.addEventListener(
+  "drop",
+  event => {
+
+    event.preventDefault();
+
+    dragCounter = 0;
+
+    dragOverlay.style.display =
+      "none";
+
+    if (
+      event.dataTransfer?.files?.length
+    ) {
+
+      addFiles(
+        event.dataTransfer.files
+      );
+    }
+  }
+);
+
+// ------------------------------------------------------------
+// Textarea
+// ------------------------------------------------------------
+
+function resizeTextarea() {
+
+  messageInput.style.height =
+    "auto";
+
+  messageInput.style.height =
+    Math.min(
+      messageInput.scrollHeight,
+      180
+    ) + "px";
+}
+
+messageInput.addEventListener(
+  "input",
+  () => {
+
+    resizeTextarea();
+
+    updateSendButton();
+  }
+);
+
+function updateSendButton() {
+
+  sendBtn.disabled =
+    !messageInput.value.trim() &&
+    state.attachments.length === 0;
+}
+
+// ------------------------------------------------------------
+// Add user message to UI
+// ------------------------------------------------------------
+
+function addUserMessage(
+  text,
+  attachments
+) {
+
+  welcome.style.display =
+    "none";
+
+  const message =
+    document.createElement("div");
+
+  message.className =
+    "message user";
+
+  let attachmentHTML = "";
+
+  for (
+    const attachment of attachments
+  ) {
+
+    if (
+      attachment.mimeType.startsWith(
+        "image/"
+      )
+    ) {
+
+      attachmentHTML += `
+        <img
+          class="chat-image"
+          src="${attachment.preview}"
+          alt="${escapeHTML(
+            attachment.name
+          )}"
+        >
+      `;
+
+    } else {
+
+      attachmentHTML += `
+        <div class="chat-file">
+          <span>📄</span>
+
           <div>
-            <div class="error-card-title">AURA AI couldn't complete that request.</div>
-            <div class="error-card-desc">${escapeHtml(m.content)}</div>
-            <button class="retry-btn" type="button" data-retry="${idx}">Try again</button>
+            <strong>
+              ${escapeHTML(
+                attachment.name
+              )}
+            </strong>
+
+            <small>
+              ${formatSize(
+                attachment.size
+              )}
+            </small>
           </div>
-        </div>`;
-    });
+        </div>
+      `;
+    }
   }
 
-  // ---------- VOICE (recording) ----------
-  async function toggleRecording() {
-    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
-      stopRecording();
-      return;
-    }
-    if (!navigator.mediaDevices || !window.MediaRecorder) {
-      toast('Voice recording is not supported in this browser.', 'warn');
-      return;
-    }
+  message.innerHTML = `
+    <div class="message-avatar">
+      You
+    </div>
+
+    <div class="message-body">
+
+      <div class="message-content">
+        ${attachmentHTML}
+
+        ${
+          text
+            ? renderMarkdown(text)
+            : ""
+        }
+      </div>
+
+      <div class="message-actions">
+
+        <button data-copy-message>
+          Copy
+        </button>
+
+        <button data-edit-message>
+          Edit
+        </button>
+
+      </div>
+
+    </div>
+  `;
+
+  messagesEl.appendChild(
+    message
+  );
+
+  scrollBottom();
+}
+
+// ------------------------------------------------------------
+// AI message
+// ------------------------------------------------------------
+
+function addAIMessage(
+  text,
+  model
+) {
+
+  welcome.style.display =
+    "none";
+
+  const message =
+    document.createElement("div");
+
+  message.className =
+    "message assistant";
+
+  message.innerHTML = `
+    <div class="message-avatar">
+      A
+    </div>
+
+    <div class="message-body">
+
+      <div class="message-content">
+        ${renderMarkdown(text)}
+      </div>
+
+      <div class="message-actions">
+
+        <button data-copy-message>
+          Copy
+        </button>
+
+        <button data-speak>
+          🔊 Listen
+        </button>
+
+        <button data-regenerate>
+          Regenerate
+        </button>
+
+      </div>
+
+      ${
+        model
+          ? `<small style="color:var(--muted);font-size:10px">
+               ${escapeHTML(model)}
+             </small>`
+          : ""
+      }
+
+    </div>
+  `;
+
+  messagesEl.appendChild(
+    message
+  );
+
+  scrollBottom();
+
+  return message;
+}
+
+// ------------------------------------------------------------
+// Loading
+// ------------------------------------------------------------
+
+function addLoading() {
+
+  const loading =
+    document.createElement("div");
+
+  loading.id =
+    "loadingMessage";
+
+  loading.className =
+    "message assistant";
+
+  loading.innerHTML = `
+    <div class="message-avatar">
+      A
+    </div>
+
+    <div class="message-body">
+
+      <div class="message-content">
+        <span style="color:var(--muted)">
+          Abhay Singh AI
+          <span class="loading-dots">
+            ● ● ●
+          </span>
+        </span>
+      </div>
+
+    </div>
+  `;
+
+  messagesEl.appendChild(
+    loading
+  );
+
+  scrollBottom();
+
+  return loading;
+}
+
+// ------------------------------------------------------------
+// Scroll
+// ------------------------------------------------------------
+
+function scrollBottom() {
+
+  const area =
+    $("#chatArea");
+
+  area.scrollTop =
+    area.scrollHeight;
+}
+
+// ------------------------------------------------------------
+// API request
+// ------------------------------------------------------------
+
+async function sendMessage() {
+
+  const text =
+    messageInput.value.trim();
+
+  if (
+    !text &&
+    state.attachments.length === 0
+  ) {
+    return;
+  }
+
+  const outgoingAttachments =
+    [...state.attachments];
+
+  addUserMessage(
+    text,
+    outgoingAttachments
+  );
+
+  const oldHistory =
+    state.messages.map(
+      item => ({
+        role: item.role,
+        text: item.text
+      })
+    );
+
+  const history =
+    oldHistory.slice(-20);
+
+  state.messages.push({
+    role: "user",
+    text
+  });
+
+  messageInput.value = "";
+
+  resizeTextarea();
+
+  state.attachments = [];
+
+  renderAttachments();
+
+  updateSendButton();
+
+  const loading =
+    addLoading();
+
+  setComposerDisabled(true);
+
+  try {
+
+    const payload = {
+
+      message: text,
+
+      history,
+
+      attachments:
+        outgoingAttachments.map(
+          item => ({
+            name: item.name,
+            mimeType: item.mimeType,
+            size: item.size,
+            data: item.data
+          })
+        )
+    };
+
+    const response =
+      await fetch(
+        "/api/chat",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify(payload)
+        }
+      );
+
+    let data;
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
-      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-      state.mediaRecorder = rec;
-      state.recordedChunks = [];
-      rec.ondataavailable = (e) => { if (e.data.size) state.recordedChunks.push(e.data); };
-      rec.onstop = () => {
-        stream.getTracks().forEach(t => t.stop());
-        state.mediaRecorder = null;
-      };
-      rec.start();
-      state.recordingStart = Date.now();
-      dom.recordingOverlay.hidden = false;
-      dom.recordingOverlay.style.display = 'flex';
-      dom.micBtn.classList.add('recording');
-      dom.micBtn.setAttribute('aria-pressed', 'true');
-      state.recordingTimer = setInterval(() => {
-        const s = Math.floor((Date.now() - state.recordingStart) / 1000);
-        dom.recordingTime.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-      }, 250);
-    } catch (err) {
-      if (err.name === 'NotAllowedError') toast('Microphone permission denied.', 'error');
-      else toast('Unable to start voice recording.', 'error');
+
+      data =
+        await response.json();
+
+    } catch {
+
+      throw new Error(
+        `Server returned HTTP ${response.status}`
+      );
     }
-  }
 
-  function stopRecording() {
-    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
-      state.mediaRecorder.stop();
+    if (
+      !response.ok ||
+      !data.success
+    ) {
+
+      throw new Error(
+        data.error ||
+        `API error: ${response.status}`
+      );
     }
-    clearInterval(state.recordingTimer);
-    dom.recordingOverlay.hidden = true;
-    dom.recordingOverlay.style.display = '';
-    dom.micBtn.classList.remove('recording');
-    dom.micBtn.setAttribute('aria-pressed', 'false');
-  }
 
-  function cancelRecording() {
-    state.recordedChunks = [];
-    stopRecording();
-    toast('Recording discarded', 'info');
-  }
+    loading.remove();
 
-  async function sendRecording() {
-    const chunks = state.recordedChunks.slice();
-    stopRecording();
-    if (!chunks.length) return;
-    const blob = new Blob(chunks, { type: 'audio/webm' });
-    const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
-    state.attachments.push({ id: uid(), file, name: file.name, size: file.size, type: file.type, kind: 'file' });
-    renderAttachments();
-    updateComposerState();
-    toast('Voice note attached', 'success');
-  }
+    addAIMessage(
+      data.message,
+      data.model
+    );
 
-  // ---------- VOICE (synthesis) ----------
-  function pickVoice(text) {
-    const voices = window.speechSynthesis?.getVoices() || [];
-    if (!voices.length) return null;
-    const isHindi = /[\u0900-\u097F]/.test(text);
-    if (isHindi) return voices.find(v => /hi-IN/i.test(v.lang)) || voices.find(v => /hi/i.test(v.lang)) || null;
-    return voices.find(v => /en-US/i.test(v.lang)) || voices.find(v => /en-GB/i.test(v.lang)) ||
-      voices.find(v => /en/i.test(v.lang)) || voices[0];
-  }
-  function speak(text) {
-    if (!window.speechSynthesis || !text) {
-      toast('Speech playback is not supported in this browser.', 'warn');
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const clean = String(text).replace(/```[\s\S]*?```/g, ' code block ').replace(/[*_`#>]/g, '');
-    const u = new SpeechSynthesisUtterance(clean.slice(0, 4000));
-    const v = pickVoice(clean);
-    if (v) u.voice = v;
-    u.rate = 1; u.pitch = 1;
-    window.speechSynthesis.speak(u);
-  }
-  function stopSpeaking() { window.speechSynthesis?.cancel(); }
-
-  // ---------- SIDEBAR ----------
-  function openSidebar() {
-    if (window.innerWidth <= 860) {
-      dom.sidebar.classList.add('open');
-      dom.backdrop.classList.add('visible');
-      dom.menuBtn.setAttribute('aria-expanded', 'true');
-    }
-  }
-  function closeSidebar() {
-    if (window.innerWidth <= 860) {
-      dom.sidebar.classList.remove('open');
-      dom.backdrop.classList.remove('visible');
-      dom.menuBtn.setAttribute('aria-expanded', 'false');
-    }
-  }
-
-  // ---------- MODEL ----------
-  function setModel(m) {
-    state.model = m;
-    const labels = { flash: 'AURA · Flash', pro: 'AURA · Pro', auto: 'AURA · Auto' };
-    dom.modelLabel.textContent = labels[m] || labels.flash;
-    $$('.model-item').forEach(it => {
-      const on = it.dataset.model === m;
-      it.classList.toggle('selected', on);
-      it.setAttribute('aria-selected', on ? 'true' : 'false');
+    state.messages.push({
+      role: "assistant",
+      text: data.message
     });
-    dom.modelMenu.classList.remove('open');
-    dom.modelBadge.setAttribute('aria-expanded', 'false');
-    toast(`Model: ${labels[m]}`, 'success');
+
+    saveCurrentChat();
+
+  } catch (error) {
+
+    loading.remove();
+
+    addAIMessage(
+      `⚠️ ${error.message}`
+    );
+
+  } finally {
+
+    setComposerDisabled(
+      false
+    );
+
+    messageInput.focus();
   }
+}
 
-  // ---------- SETTINGS MODAL ----------
-  function openSettings() {
-    dom.settingsModal.hidden = false;
-    dom.settingsModal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
+// ------------------------------------------------------------
+// Disable composer
+// ------------------------------------------------------------
+
+function setComposerDisabled(
+  disabled
+) {
+
+  messageInput.disabled =
+    disabled;
+
+  $("#attachBtn").disabled =
+    disabled;
+
+  $("#micBtn").disabled =
+    disabled;
+
+  if (!disabled) {
+    updateSendButton();
   }
-  function closeSettings() {
-    dom.settingsModal.hidden = true;
-    dom.settingsModal.style.display = '';
-    document.body.style.overflow = '';
-  }
+}
 
-  // ---------- LIGHTBOX ----------
-  function openLightbox(src) {
-    dom.lightboxImg.src = src;
-    dom.lightbox.hidden = false;
-    dom.lightbox.style.display = 'flex';
-  }
-  function closeLightbox() {
-    dom.lightbox.hidden = true;
-    dom.lightbox.style.display = '';
-    dom.lightboxImg.src = '';
-  }
+// ------------------------------------------------------------
+// Form submit
+// ------------------------------------------------------------
 
-  // ---------- REGENERATE ----------
-  async function regenerateFrom(idx) {
-    const conv = getCurrent();
-    if (!conv || state.isGenerating) return;
-    const target = conv.messages[idx];
-    if (!target) return;
-    conv.messages = conv.messages.slice(0, idx);
-    saveChats();
-    renderMessages();
+$("#composer").addEventListener(
+  "submit",
+  event => {
 
-    const lastUser = [...conv.messages].reverse().find(m => m.role === 'user');
-    if (!lastUser) return;
+    event.preventDefault();
 
-    dom.composerInput.value = lastUser.content || '';
-    autoResize(); updateComposerState();
-
-    // Remove last user so sendMessage doesn't duplicate
-    conv.messages = conv.messages.slice(0, -1);
-    saveChats();
-    renderMessages();
     sendMessage();
   }
+);
 
-  // ---------- HISTORY CONTEXT MENU ----------
-  function openHistoryMenu(anchor, id) {
-    document.getElementById('ctxMenu')?.remove();
-    const menu = document.createElement('div');
-    menu.id = 'ctxMenu';
-    menu.style.cssText = `
-      position:fixed; z-index:500; background:var(--surface); border:1px solid var(--border);
-      border-radius:12px; box-shadow:var(--shadow-lg); padding:6px; min-width:170px;
-      animation: fadeUp .18s var(--ease);
-    `;
-    const conv = state.conversations.find(c => c.id === id);
-    menu.innerHTML = `
-      <button class="attach-item" type="button" data-act="rename">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>
-        Rename
-      </button>
-      <button class="attach-item" type="button" data-act="delete" style="color:var(--danger)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        Delete
-      </button>`;
-    document.body.appendChild(menu);
-    const r = anchor.getBoundingClientRect();
-    let top = r.bottom + 6, left = r.left;
-    if (left + 180 > window.innerWidth) left = window.innerWidth - 190;
-    if (top + 120 > window.innerHeight) top = r.top - 120;
-    menu.style.top = top + 'px';
-    menu.style.left = left + 'px';
+// ------------------------------------------------------------
+// Enter to send
+// ------------------------------------------------------------
 
-    menu.querySelector('[data-act="rename"]').addEventListener('click', () => {
-      menu.remove();
-      const next = prompt('Rename conversation:', conv?.title || '');
-      if (next != null && next.trim()) renameConversation(id, next.trim());
-    });
-    menu.querySelector('[data-act="delete"]').addEventListener('click', () => {
-      menu.remove();
-      if (confirm('Delete this conversation?')) deleteConversation(id);
-    });
-  }
+messageInput.addEventListener(
+  "keydown",
+  event => {
 
-  // ---------- EVENT BINDINGS ----------
-  function bindEvents() {
-    // ============================================================
-    // THE FIX: the composer is a <form>. We attach ONE submit handler
-    // that calls preventDefault() and delegates to sendMessage().
-    // The send button is type="submit" so clicking it OR pressing
-    // Enter inside the textarea fires this same handler.
-    // ============================================================
-    dom.composer.addEventListener('submit', handleSubmit);
+    const enterSetting =
+      $("#enterToSend").checked;
 
-    async function handleSubmit(event) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      enterSetting
+    ) {
+
       event.preventDefault();
-      event.stopPropagation();
 
-      // If generating, the send button becomes "stop"
-      if (state.isGenerating) {
-        state.abortController?.abort();
-        return;
-      }
-
-      const text = dom.composerInput.value.trim();
-      if (!text && state.attachments.length === 0) return;
-
-      await sendMessage();
+      sendMessage();
     }
+  }
+);
 
-    // Also handle click on send button directly (belt-and-braces for
-    // browsers that don't fire submit from a disabled→enabled button,
-    // or when the button is clicked via keyboard in odd ways).
-    dom.sendBtn.addEventListener('click', (e) => {
-      // If the form submission already handled it, preventDefault on the
-      // button prevents a duplicate submit. We rely on the form's submit
-      // event for the actual action, so just prevent any default here.
-      e.preventDefault();
-      if (state.isGenerating) {
-        state.abortController?.abort();
-        return;
-      }
-      const text = dom.composerInput.value.trim();
-      if (!text && state.attachments.length === 0) return;
-      // Fire the same handler
-      handleSubmit(e);
-    });
+// ------------------------------------------------------------
+// Speech Recognition
+// ------------------------------------------------------------
 
-    // ----- Input events -----
-    dom.composerInput.addEventListener('input', () => {
-      autoResize();
-      updateComposerState();
-    });
-    dom.composerInput.addEventListener('compositionstart', () => { state.composing = true; });
-    dom.composerInput.addEventListener('compositionend', () => { state.composing = false; });
+const SpeechRecognition =
+  window.SpeechRecognition ||
+  window.webkitSpeechRecognition;
 
-    dom.composerInput.addEventListener('keydown', (e) => {
-      // Never send during IME composition (Hindi/Japanese/Chinese)
-      if (state.composing || e.isComposing || e.keyCode === 229) return;
+function startSpeechRecognition() {
 
-      if (e.key === 'Enter' && !e.shiftKey && state.settings.enterToSend) {
-        e.preventDefault();
-        // Trigger submit on the form
-        dom.composer.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
-      }
-    });
+  if (!SpeechRecognition) {
 
-    // ----- Sidebar -----
-    dom.menuBtn.addEventListener('click', openSidebar);
-    dom.sidebarClose.addEventListener('click', closeSidebar);
-    dom.backdrop.addEventListener('click', closeSidebar);
-    dom.newChatBtn.addEventListener('click', startNewChat);
-    dom.headerNewChat.addEventListener('click', startNewChat);
+    showToast(
+      "Voice input is not supported in this browser."
+    );
 
-    dom.searchInput.addEventListener('input', debounce((e) => {
-      const v = e.target.value;
-      dom.searchClear.hidden = !v;
-      renderHistory(v);
-    }, 150));
-    dom.searchClear.addEventListener('click', () => {
-      dom.searchInput.value = '';
-      dom.searchClear.hidden = true;
-      renderHistory('');
-      dom.searchInput.focus();
-    });
+    return;
+  }
 
-    dom.chatHistory.addEventListener('click', (e) => {
-      const menuBtn = e.target.closest('.hi-menu');
-      if (menuBtn) { e.stopPropagation(); openHistoryMenu(menuBtn, menuBtn.dataset.menu); return; }
-      const item = e.target.closest('.hist-item');
-      if (item) switchTo(item.dataset.id);
-    });
-    dom.chatHistory.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter' && e.key !== ' ') return;
-      const item = e.target.closest('.hist-item');
-      if (item) { e.preventDefault(); switchTo(item.dataset.id); }
-    });
+  const recognition =
+    new SpeechRecognition();
 
-    // ----- Settings / theme / clear -----
-    dom.settingsBtn.addEventListener('click', openSettings);
-    dom.settingsClose.addEventListener('click', closeSettings);
-    dom.settingsModal.addEventListener('click', (e) => {
-      if (e.target === dom.settingsModal) closeSettings();
-    });
-    dom.themeBtn.addEventListener('click', () => {
-      const next = state.settings.theme === 'dark' ? 'light' : 'dark';
-      applyTheme(next);
-      toast(`Theme: ${next}`, 'success');
-    });
-    dom.clearAllBtn.addEventListener('click', () => {
-      if (!state.conversations.length) { toast('No conversations to clear', 'info'); return; }
-      if (confirm('Delete all conversations? This cannot be undone.')) {
-        state.conversations = [];
-        state.currentId = null;
-        saveChats(); saveCurrent();
-        createConversation();
-        renderHistory(); renderMessages();
-        toast('All conversations cleared', 'success');
-      }
-    });
+  state.recognition =
+    recognition;
 
-    // ----- Model -----
-    dom.modelBadge.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const open = dom.modelMenu.classList.toggle('open');
-      dom.modelBadge.setAttribute('aria-expanded', open ? 'true' : 'false');
-    });
-    $$('.model-item').forEach(it => it.addEventListener('click', () => setModel(it.dataset.model)));
+  recognition.continuous =
+    true;
 
-    // ----- Attach -----
-    dom.attachBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const open = dom.attachMenu.classList.toggle('open');
-      dom.attachBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    });
-    $$('.attach-item').forEach(it => it.addEventListener('click', () => {
-      dom.attachMenu.classList.remove('open');
-      dom.attachBtn.setAttribute('aria-expanded', 'false');
-      if (it.dataset.kind === 'image') dom.imageInput.click();
-      else dom.fileInput.click();
-    }));
-    dom.imageInput.addEventListener('change', async (e) => {
-      const files = Array.from(e.target.files || []);
-      if (files.length) await addAttachmentsAndPreview(files);
-      e.target.value = '';
-    });
-    dom.fileInput.addEventListener('change', async (e) => {
-      const files = Array.from(e.target.files || []);
-      if (files.length) await addAttachmentsAndPreview(files);
-      e.target.value = '';
-    });
+  recognition.interimResults =
+    true;
 
-    dom.attachments.addEventListener('click', (e) => {
-      const rm = e.target.closest('[data-remove]');
-      if (!rm) return;
-      state.attachments = state.attachments.filter(a => a.id !== rm.dataset.remove);
-      renderAttachments();
-      updateComposerState();
-    });
+  recognition.lang =
+    "hi-IN";
 
-    // ----- Mic -----
-    dom.micBtn.addEventListener('click', toggleRecording);
-    dom.recordingCancel.addEventListener('click', cancelRecording);
-    dom.recordingSend.addEventListener('click', sendRecording);
+  $("#voiceStatus").classList.remove(
+    "hidden"
+  );
 
-    // ----- Message actions (delegated) -----
-    dom.messages.addEventListener('click', async (e) => {
-      const codeBtn = e.target.closest('.code-copy');
-      if (codeBtn) {
-        const el = document.getElementById(codeBtn.dataset.codeId);
-        if (el) {
-          try {
-            await navigator.clipboard.writeText(el.textContent);
-            codeBtn.classList.add('copied');
-            const orig = codeBtn.innerHTML;
-            codeBtn.innerHTML = '✓ Copied';
-            setTimeout(() => { codeBtn.classList.remove('copied'); codeBtn.innerHTML = orig; }, 1200);
-          } catch { toast('Copy failed', 'error'); }
+  $("#voiceStatusText").textContent =
+    "Listening...";
+
+  recognition.onresult =
+    event => {
+
+      let finalText = "";
+
+      let interim = "";
+
+      for (
+        let i =
+          event.resultIndex;
+        i < event.results.length;
+        i++
+      ) {
+
+        const transcript =
+          event.results[i][0].transcript;
+
+        if (
+          event.results[i].isFinal
+        ) {
+
+          finalText += transcript;
+
+        } else {
+
+          interim += transcript;
         }
-        return;
       }
 
-      const lb = e.target.closest('[data-lightbox]');
-      if (lb) { openLightbox(lb.dataset.lightbox); return; }
+      if (finalText) {
 
-      const retry = e.target.closest('[data-retry]');
-      if (retry) { regenerateFrom(+retry.dataset.retry); return; }
+        messageInput.value +=
+          (
+            messageInput.value
+              ? " "
+              : ""
+          ) + finalText;
 
-      const act = e.target.closest('.msg-action');
-      if (!act) return;
-      const idx = +act.dataset.idx;
-      const conv = getCurrent();
-      if (!conv) return;
-      const m = conv.messages[idx];
-      if (!m) return;
-
-      if (act.dataset.action === 'copy') {
-        try { await navigator.clipboard.writeText(m.content || ''); toast('Copied to clipboard', 'success'); }
-        catch { toast('Copy failed', 'error'); }
-      } else if (act.dataset.action === 'speak') {
-        speak(m.content || '');
-      } else if (act.dataset.action === 'regenerate') {
-        regenerateFrom(idx);
-      } else if (act.dataset.action === 'resend') {
-        dom.composerInput.value = m.content || '';
-        autoResize(); updateComposerState(); dom.composerInput.focus();
+        resizeTextarea();
+        updateSendButton();
       }
-    });
 
-    // ----- Lightbox -----
-    dom.lightboxClose.addEventListener('click', closeLightbox);
-    dom.lightbox.addEventListener('click', (e) => {
-      if (e.target === dom.lightbox) closeLightbox();
-    });
+      $("#voiceStatusText").textContent =
+        interim ||
+        "Listening...";
+    };
 
-    // ----- Settings controls -----
-    $$('#themeSegmented button').forEach(b => b.addEventListener('click', () => {
-      applyTheme(b.dataset.value);
-      saveSettings();
-    }));
-    dom.switchEnter.addEventListener('click', () => toggleSwitch(dom.switchEnter, 'enterToSend'));
-    dom.switchVoiceMode.addEventListener('click', () => toggleSwitch(dom.switchVoiceMode, 'voiceMode'));
-    [dom.switchEnter, dom.switchVoiceMode].forEach(el => el.addEventListener('keydown', (e) => {
-      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); el.click(); }
-    }));
-    dom.clearFromSettings.addEventListener('click', () => {
-      if (!state.conversations.length) { toast('No conversations to clear', 'info'); return; }
-      if (confirm('Delete all conversations?')) {
-        state.conversations = []; state.currentId = null;
-        saveChats(); saveCurrent(); createConversation();
-        renderHistory(); renderMessages();
-        closeSettings();
-        toast('Cleared', 'success');
-      }
-    });
+  recognition.onerror =
+    event => {
 
-    // ----- Outside clicks -----
-    document.addEventListener('click', (e) => {
-      if (!e.target.closest('#modelBadge') && !e.target.closest('#modelMenu')) {
-        dom.modelMenu.classList.remove('open');
-        dom.modelBadge.setAttribute('aria-expanded', 'false');
-      }
-      if (!e.target.closest('#attachBtn') && !e.target.closest('#attachMenu')) {
-        dom.attachMenu.classList.remove('open');
-        dom.attachBtn.setAttribute('aria-expanded', 'false');
-      }
-      const ctx = document.getElementById('ctxMenu');
-      if (ctx && !e.target.closest('#ctxMenu')) ctx.remove();
-    });
+      showToast(
+        "Voice input error: " +
+        event.error
+      );
 
-    // ----- Keyboard shortcuts -----
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closeSidebar();
-        closeSettings();
-        closeLightbox();
-        dom.modelMenu.classList.remove('open');
-        dom.attachMenu.classList.remove('open');
-        document.getElementById('ctxMenu')?.remove();
-        stopSpeaking();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        startNewChat();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
-        e.preventDefault();
-        openSidebar();
-        dom.searchInput.focus();
-      }
-    });
+      stopSpeechRecognition();
+    };
 
-    // ----- Suggestions -----
-    $$('.sugg').forEach(s => {
-      s.addEventListener('click', () => {
-        dom.composerInput.value = s.dataset.prompt || '';
-        autoResize(); updateComposerState();
-        dom.composerInput.focus();
-      });
-    });
+  recognition.onend =
+    () => {
 
-    // ----- System theme & network -----
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
-      if (state.settings.theme === 'system') applyTheme('system');
-    });
-    window.addEventListener('online', () => setStatus(true));
-    window.addEventListener('offline', () => setStatus(false));
+      if (
+        state.recognition
+      ) {
+        stopSpeechRecognition();
+      }
+    };
+
+  recognition.start();
+}
+
+function stopSpeechRecognition() {
+
+  try {
+    state.recognition?.stop();
+  } catch {}
+
+  state.recognition =
+    null;
+
+  $("#voiceStatus").classList.add(
+    "hidden"
+  );
+}
+
+$("#micBtn").addEventListener(
+  "click",
+  () => {
+
+    if (state.recognition) {
+
+      stopSpeechRecognition();
+
+    } else {
+
+      startSpeechRecognition();
+    }
+  }
+);
+
+$("#stopVoice").addEventListener(
+  "click",
+  stopSpeechRecognition
+);
+
+// ------------------------------------------------------------
+// Audio recording
+// ------------------------------------------------------------
+
+async function startAudioRecording() {
+
+  if (
+    !navigator.mediaDevices ||
+    !navigator.mediaDevices.getUserMedia
+  ) {
+
+    showToast(
+      "Audio recording is not supported."
+    );
+
+    return;
   }
 
-  function setStatus(online) {
-    dom.statusPill.classList.toggle('offline', !online);
-    dom.statusPill.querySelector('.status-text').textContent = online ? 'Online' : 'Offline';
-  }
+  try {
 
-  function toggleSwitch(el, key) {
-    const on = el.classList.toggle('on');
-    el.setAttribute('aria-checked', on ? 'true' : 'false');
-    state.settings[key] = on;
-    saveSettings();
-    if (key === 'voiceMode' && !on) stopSpeaking();
-  }
+    const stream =
+      await navigator.mediaDevices
+        .getUserMedia({
+          audio: true
+        });
 
-  // ---------- INIT ----------
-  function init() {
-    load();
-    applyTheme(state.settings.theme);
+    let mimeType =
+      "audio/webm";
 
-    dom.switchEnter.classList.toggle('on', state.settings.enterToSend);
-    dom.switchEnter.setAttribute('aria-checked', String(state.settings.enterToSend));
-    dom.switchVoiceMode.classList.toggle('on', state.settings.voiceMode);
-    dom.switchVoiceMode.setAttribute('aria-checked', String(state.settings.voiceMode));
+    if (
+      !MediaRecorder.isTypeSupported(
+        "audio/webm"
+      )
+    ) {
 
-    if (!state.conversations.length) {
-      createConversation();
-    } else if (!state.currentId || !state.conversations.find(c => c.id === state.currentId)) {
-      state.currentId = state.conversations[0].id;
-      saveCurrent();
+      mimeType =
+        "audio/mp4";
     }
 
-    setModel(state.model);
+    const recorder =
+      new MediaRecorder(
+        stream,
+        { mimeType }
+      );
+
+    state.audioChunks = [];
+
+    state.mediaRecorder =
+      recorder;
+
+    recorder.ondataavailable =
+      event => {
+
+        if (
+          event.data.size > 0
+        ) {
+          state.audioChunks.push(
+            event.data
+          );
+        }
+      };
+
+    recorder.onstop =
+      async () => {
+
+        stream
+          .getTracks()
+          .forEach(
+            track =>
+              track.stop()
+          );
+
+        const blob =
+          new Blob(
+            state.audioChunks,
+            {
+              type:
+                recorder.mimeType
+            }
+          );
+
+        const file =
+          new File(
+            [blob],
+            `voice-${Date.now()}.webm`,
+            {
+              type:
+                recorder.mimeType
+            }
+          );
+
+        await addFiles([file]);
+
+        showToast(
+          "Voice message attached."
+        );
+      };
+
+    recorder.start();
+
+    state.recording = true;
+
+    $("#voiceStatus").classList.remove(
+      "hidden"
+    );
+
+    $("#voiceStatusText").textContent =
+      "Recording voice message...";
+
+  } catch (error) {
+
+    showToast(
+      "Microphone permission was denied or unavailable."
+    );
+  }
+}
+
+$("#stopVoice").addEventListener(
+  "click",
+  () => {
+
+    if (
+      state.mediaRecorder &&
+      state.mediaRecorder.state !==
+        "inactive"
+    ) {
+
+      state.mediaRecorder.stop();
+
+      state.recording = false;
+
+      $("#voiceStatus").classList.add(
+        "hidden"
+      );
+    }
+
+  }
+);
+
+// ------------------------------------------------------------
+// AI text-to-speech
+// ------------------------------------------------------------
+
+function speakText(text) {
+
+  if (
+    !("speechSynthesis" in window)
+  ) {
+
+    showToast(
+      "Text-to-speech is not supported."
+    );
+
+    return;
+  }
+
+  if (
+    speechSynthesis.speaking
+  ) {
+
+    speechSynthesis.cancel();
+
+    state.speaking = false;
+
+    return;
+  }
+
+  const clean =
+    text
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/[*_#`]/g, "");
+
+  const utterance =
+    new SpeechSynthesisUtterance(
+      clean
+    );
+
+  utterance.lang =
+    /[\u0900-\u097F]/.test(clean)
+      ? "hi-IN"
+      : "en-US";
+
+  utterance.rate =
+    1;
+
+  utterance.pitch =
+    1;
+
+  utterance.onend =
+    () => {
+      state.speaking = false;
+    };
+
+  state.speaking = true;
+
+  speechSynthesis.speak(
+    utterance
+  );
+}
+
+// ------------------------------------------------------------
+// Message actions
+// ------------------------------------------------------------
+
+messagesEl.addEventListener(
+  "click",
+  event => {
+
+    const button =
+      event.target.closest(
+        "button"
+      );
+
+    if (!button) return;
+
+    const messageEl =
+      button.closest(
+        ".message"
+      );
+
+    if (!messageEl) return;
+
+    const content =
+      messageEl.querySelector(
+        ".message-content"
+      );
+
+    const text =
+      content?.innerText || "";
+
+    if (
+      button.hasAttribute(
+        "data-copy-message"
+      )
+    ) {
+
+      navigator.clipboard
+        .writeText(text)
+        .then(() =>
+          showToast(
+            "Copied to clipboard."
+          )
+        );
+
+      return;
+    }
+
+    if (
+      button.hasAttribute(
+        "data-speak"
+      )
+    ) {
+
+      speakText(text);
+
+      return;
+    }
+
+    if (
+      button.hasAttribute(
+        "data-edit-message"
+      )
+    ) {
+
+      messageInput.value =
+        text;
+
+      resizeTextarea();
+
+      updateSendButton();
+
+      messageInput.focus();
+
+      return;
+    }
+
+    if (
+      button.hasAttribute(
+        "data-regenerate"
+      )
+    ) {
+
+      const previousUser =
+        [...state.messages]
+          .reverse()
+          .find(
+            item =>
+              item.role === "user"
+          );
+
+      if (previousUser) {
+
+        messageInput.value =
+          previousUser.text;
+
+        updateSendButton();
+
+        sendMessage();
+      }
+    }
+  }
+);
+
+// ------------------------------------------------------------
+// Image viewer
+// ------------------------------------------------------------
+
+messagesEl.addEventListener(
+  "click",
+  event => {
+
+    if (
+      !event.target.classList.contains(
+        "chat-image"
+      )
+    ) return;
+
+    $("#viewerImage").src =
+      event.target.src;
+
+    $("#imageViewer").classList.remove(
+      "hidden"
+    );
+  }
+);
+
+$("#closeImageViewer").onclick =
+  () => {
+
+    $("#imageViewer").classList.add(
+      "hidden"
+    );
+  };
+
+// ------------------------------------------------------------
+// Suggestions
+// ------------------------------------------------------------
+
+$$(".suggestion").forEach(
+  button => {
+
+    button.addEventListener(
+      "click",
+      () => {
+
+        messageInput.value =
+          button.dataset.prompt;
+
+        resizeTextarea();
+
+        updateSendButton();
+
+        messageInput.focus();
+      }
+    );
+  }
+);
+
+// ------------------------------------------------------------
+// New chat
+// ------------------------------------------------------------
+
+function newChat() {
+
+  saveCurrentChat();
+
+  state.messages = [];
+
+  state.attachments = [];
+
+  messagesEl.innerHTML = "";
+
+  welcome.style.display =
+    "";
+
+  renderAttachments();
+
+  updateSendButton();
+
+  messageInput.value = "";
+
+  resizeTextarea();
+
+  messageInput.focus();
+}
+
+$("#newChatBtn").onclick =
+  newChat;
+
+$("#topNewChat").onclick =
+  newChat;
+
+// ------------------------------------------------------------
+// Save current chat
+// ------------------------------------------------------------
+
+function saveCurrentChat() {
+
+  if (
+    state.messages.length === 0
+  ) return;
+
+  const first =
+    state.messages.find(
+      item =>
+        item.role === "user"
+    );
+
+  const title =
+    first?.text?.slice(0, 60) ||
+    "New chat";
+
+  const chat = {
+
+    id:
+      Date.now(),
+
+    title,
+
+    messages:
+      state.messages,
+
+    updated:
+      new Date().toISOString()
+  };
+
+  state.chats.unshift(
+    chat
+  );
+
+  state.chats =
+    state.chats.slice(0, 50);
+
+  localStorage.setItem(
+    "abhay_chats",
+    JSON.stringify(
+      state.chats
+    )
+  );
+
+  renderHistory();
+}
+
+// ------------------------------------------------------------
+// History
+// ------------------------------------------------------------
+
+function renderHistory(
+  filter = ""
+) {
+
+  const list =
+    $("#historyList");
+
+  list.innerHTML = "";
+
+  const chats =
+    state.chats.filter(
+      chat =>
+        chat.title
+          .toLowerCase()
+          .includes(
+            filter.toLowerCase()
+          )
+    );
+
+  chats.forEach(
+    chat => {
+
+      const button =
+        document.createElement(
+          "button"
+        );
+
+      button.className =
+        "history-item";
+
+      button.textContent =
+        chat.title;
+
+      button.onclick =
+        () => {
+
+          loadChat(chat);
+        };
+
+      list.appendChild(
+        button
+      );
+    }
+  );
+}
+
+function loadChat(chat) {
+
+  state.messages =
+    [...chat.messages];
+
+  messagesEl.innerHTML = "";
+
+  welcome.style.display =
+    "none";
+
+  for (
+    const message of
+    state.messages
+  ) {
+
+    if (
+      message.role === "user"
+    ) {
+
+      addUserMessage(
+        message.text,
+        []
+      );
+
+    } else {
+
+      addAIMessage(
+        message.text
+      );
+    }
+  }
+
+  scrollBottom();
+}
+
+renderHistory();
+
+$("#chatSearch").addEventListener(
+  "input",
+  event => {
+
+    renderHistory(
+      event.target.value
+    );
+  }
+);
+
+// ------------------------------------------------------------
+// Clear current chat
+// ------------------------------------------------------------
+
+$("#clearChat").onclick =
+  () => {
+
+    messagesEl.innerHTML = "";
+
+    state.messages = [];
+
+    welcome.style.display =
+      "";
+
+    $("#moreBtn").click();
+
+    showToast(
+      "Current chat cleared."
+    );
+  };
+
+// ------------------------------------------------------------
+// Delete history
+// ------------------------------------------------------------
+
+$("#deleteHistory").onclick =
+  () => {
+
+    state.chats = [];
+
+    localStorage.removeItem(
+      "abhay_chats"
+    );
+
     renderHistory();
-    renderMessages();
-    bindEvents();
-    autoResize();
-    updateComposerState();     // ← critical: ensures sendBtn reflects current state on load
 
-    // Prime voices
-    if (window.speechSynthesis) {
-      window.speechSynthesis.getVoices();
-      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+    $("#moreBtn").click();
+
+    showToast(
+      "Chat history deleted."
+    );
+  };
+
+// ------------------------------------------------------------
+// Export
+// ------------------------------------------------------------
+
+$("#exportChat").onclick =
+  () => {
+
+    if (
+      state.messages.length === 0
+    ) {
+
+      showToast(
+        "No chat to export."
+      );
+
+      return;
     }
 
-    setStatus(navigator.onLine);
-    setTimeout(() => toast('Welcome to AURA AI ✦', 'success'), 400);
-  }
+    const text =
+      state.messages
+        .map(
+          item =>
+            `${
+              item.role === "user"
+                ? "You"
+                : "Abhay Singh AI"
+            }:\n${item.text}`
+        )
+        .join(
+          "\n\n----------------\n\n"
+        );
 
-  document.addEventListener('DOMContentLoaded', init);
-})();
+    const blob =
+      new Blob(
+        [text],
+        {
+          type:
+            "text/plain;charset=utf-8"
+        }
+      );
+
+    const url =
+      URL.createObjectURL(blob);
+
+    const a =
+      document.createElement("a");
+
+    a.href = url;
+
+    a.download =
+      `abhay-singh-ai-${Date.now()}.txt`;
+
+    a.click();
+
+    URL.revokeObjectURL(url);
+
+    $("#moreBtn").click();
+
+    showToast(
+      "Chat exported."
+    );
+  };
+
+// ------------------------------------------------------------
+// Model dropdown
+// ------------------------------------------------------------
+
+$("#modelBtn").onclick =
+  event => {
+
+    event.stopPropagation();
+
+    $("#modelMenu")
+      .classList.toggle(
+        "show"
+      );
+  };
+
+$$("[data-model]").forEach(
+  button => {
+
+    button.onclick =
+      () => {
+
+        state.selectedModel =
+          button.dataset.model;
+
+        localStorage.setItem(
+          "abhay_model",
+          state.selectedModel
+        );
+
+        $("#modelBtn span")
+          .firstElementChild
+          .textContent =
+            button.querySelector(
+              "strong"
+            ).textContent;
+
+        $("#modelMenu")
+          .classList.remove(
+            "show"
+          );
+      };
+  }
+);
+
+// ------------------------------------------------------------
+// More menu
+// ------------------------------------------------------------
+
+$("#moreBtn").onclick =
+  event => {
+
+    event.stopPropagation();
+
+    $("#moreMenu")
+      .classList.toggle(
+        "show"
+      );
+  };
+
+// ------------------------------------------------------------
+// Close dropdowns
+// ------------------------------------------------------------
+
+document.addEventListener(
+  "click",
+  () => {
+
+    $("#modelMenu")
+      .classList.remove(
+        "show"
+      );
+
+    $("#moreMenu")
+      .classList.remove(
+        "show"
+      );
+  }
+);
+
+// ------------------------------------------------------------
+// Sidebar
+// ------------------------------------------------------------
+
+function openSidebar() {
+
+  $("#sidebar")
+    .classList.add("open");
+
+  $("#sidebarBackdrop")
+    .classList.add("show");
+}
+
+function closeSidebar() {
+
+  $("#sidebar")
+    .classList.remove("open");
+
+  $("#sidebarBackdrop")
+    .classList.remove("show");
+}
+
+$("#menuBtn").onclick =
+  openSidebar;
+
+$("#closeSidebar").onclick =
+  closeSidebar;
+
+$("#sidebarBackdrop").onclick =
+  closeSidebar;
+
+// ------------------------------------------------------------
+// Theme
+// ------------------------------------------------------------
+
+function toggleTheme() {
+
+  applyTheme(
+    state.theme === "dark"
+      ? "light"
+      : "dark"
+  );
+}
+
+$("#themeBtn").onclick =
+  toggleTheme;
+
+$("#topTheme").onclick =
+  toggleTheme;
+
+// ------------------------------------------------------------
+// Settings
+// ------------------------------------------------------------
+
+$("#settingsBtn").onclick =
+  () => {
+
+    $("#settingsModal")
+      .classList.remove(
+        "hidden"
+      );
+  };
+
+$("#closeSettings").onclick =
+  () => {
+
+    $("#settingsModal")
+      .classList.add(
+        "hidden"
+      );
+  };
+
+$$("[data-theme-choice]").forEach(
+  button => {
+
+    button.onclick =
+      () => {
+
+        applyTheme(
+          button.dataset.themeChoice
+        );
+      };
+  }
+);
+
+// ------------------------------------------------------------
+// Initialize
+// ------------------------------------------------------------
+
+updateSendButton();
+
+resizeTextarea();
+
+messageInput.focus();
