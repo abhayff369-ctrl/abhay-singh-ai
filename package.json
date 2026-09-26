@@ -8,6 +8,6 @@
     "build": "echo AURA AI build complete"
   },
   "engines": {
-    "node": "20.x"
+    "node": "24.x"
   }
 }
