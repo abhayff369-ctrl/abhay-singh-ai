@@ -15,21 +15,15 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- ============ APP SHELL ============ -->
   <div class="app" id="app">
 
-    <!-- Sidebar backdrop (mobile) -->
     <div class="backdrop" id="backdrop" aria-hidden="true"></div>
 
-    <!-- ============ SIDEBAR ============ -->
+    <!-- SIDEBAR -->
     <aside class="sidebar" id="sidebar" aria-label="Conversations">
       <div class="sidebar-inner">
-
-        <!-- Brand -->
         <div class="brand">
-          <div class="brand-mark" aria-hidden="true">
-            <span class="brand-star">✦</span>
-          </div>
+          <div class="brand-mark" aria-hidden="true"><span class="brand-star">✦</span></div>
           <div class="brand-text">
             <div class="brand-name">AURA AI</div>
             <div class="brand-sub">AI Assistant</div>
@@ -39,40 +33,34 @@
           </button>
         </div>
 
-        <!-- New chat -->
         <div class="sidebar-top">
-          <button class="new-chat-btn" id="newChatBtn" aria-label="Start a new chat">
+          <button class="new-chat-btn" id="newChatBtn" type="button" aria-label="Start a new chat">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             <span>New chat</span>
             <kbd class="kbd">⌘K</kbd>
           </button>
         </div>
 
-        <!-- Search -->
         <div class="search-wrap">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input id="searchInput" class="search-input" type="text" placeholder="Search conversations…" aria-label="Search conversations" autocomplete="off" />
-          <button class="search-clear" id="searchClear" aria-label="Clear search" hidden>
+          <button class="search-clear" id="searchClear" type="button" aria-label="Clear search" hidden>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 
-        <!-- History -->
-        <nav class="chat-history" id="chatHistory" aria-label="Chat history">
-          <!-- Populated by app.js -->
-        </nav>
+        <nav class="chat-history" id="chatHistory" aria-label="Chat history"></nav>
 
-        <!-- Footer -->
         <div class="sidebar-footer">
-          <button class="side-action" id="settingsBtn" aria-label="Settings">
+          <button class="side-action" id="settingsBtn" type="button" aria-label="Settings">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             <span>Settings</span>
           </button>
-          <button class="side-action" id="themeBtn" aria-label="Toggle theme">
+          <button class="side-action" id="themeBtn" type="button" aria-label="Toggle theme">
             <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             <span>Theme</span>
           </button>
-          <button class="side-action" id="clearAllBtn" aria-label="Clear all chats">
+          <button class="side-action" id="clearAllBtn" type="button" aria-label="Clear all chats">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             <span>Clear chats</span>
           </button>
@@ -80,12 +68,10 @@
       </div>
     </aside>
 
-    <!-- ============ MAIN ============ -->
+    <!-- MAIN -->
     <main class="main" role="main">
-
-      <!-- Header -->
       <header class="header" role="banner">
-        <button class="icon-btn" id="menuBtn" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
+        <button class="icon-btn" id="menuBtn" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
 
@@ -99,34 +85,33 @@
         </div>
 
         <div class="header-actions">
-          <button class="model-badge" id="modelBadge" aria-haspopup="listbox" aria-expanded="false">
+          <button class="model-badge" id="modelBadge" type="button" aria-haspopup="listbox" aria-expanded="false">
             <span class="model-dot"></span>
             <span id="modelLabel">AURA · Flash</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
 
-          <button class="icon-btn" id="headerNewChat" aria-label="New chat">
+          <button class="icon-btn" id="headerNewChat" type="button" aria-label="New chat">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
         </div>
 
-        <!-- Model dropdown -->
         <div class="model-menu" id="modelMenu" role="listbox" aria-label="Select model">
-          <button class="model-item selected" data-model="flash" role="option" aria-selected="true">
+          <button class="model-item selected" type="button" data-model="flash" role="option" aria-selected="true">
             <div>
               <div class="model-item-name">AURA · Flash</div>
               <div class="model-item-desc">Fast responses for everyday tasks</div>
             </div>
             <svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </button>
-          <button class="model-item" data-model="pro" role="option" aria-selected="false">
+          <button class="model-item" type="button" data-model="pro" role="option" aria-selected="false">
             <div>
               <div class="model-item-name">AURA · Pro</div>
               <div class="model-item-desc">Advanced reasoning</div>
             </div>
             <svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </button>
-          <button class="model-item" data-model="auto" role="option" aria-selected="false">
+          <button class="model-item" type="button" data-model="auto" role="option" aria-selected="false">
             <div>
               <div class="model-item-name">AURA · Auto</div>
               <div class="model-item-desc">Let AURA choose</div>
@@ -136,9 +121,7 @@
         </div>
       </header>
 
-      <!-- Chat scroll area -->
       <section class="chat-scroll" id="chatScroll" aria-live="polite" aria-label="Conversation">
-        <!-- Welcome state -->
         <div class="welcome" id="welcome">
           <div class="welcome-star">✦</div>
           <h1 class="welcome-title">Good to see you.</h1>
@@ -146,40 +129,29 @@
           <p class="welcome-desc">Ask questions, analyze files, write code,<br />or simply start a conversation.</p>
 
           <div class="suggestions" role="list">
-            <button class="sugg" data-prompt="Explain quantum computing simply." role="listitem">
-              <div class="sugg-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              </div>
+            <button class="sugg" type="button" data-prompt="Explain quantum computing simply." role="listitem">
+              <div class="sugg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
               <div class="sugg-body">
                 <div class="sugg-title">Explain something</div>
                 <div class="sugg-desc">"Explain quantum computing simply"</div>
               </div>
             </button>
-
-            <button class="sugg" data-prompt="Write a professional email to reschedule a meeting." role="listitem">
-              <div class="sugg-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              </div>
+            <button class="sugg" type="button" data-prompt="Write a professional email to reschedule a meeting." role="listitem">
+              <div class="sugg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
               <div class="sugg-body">
                 <div class="sugg-title">Write something</div>
                 <div class="sugg-desc">"Write a professional email"</div>
               </div>
             </button>
-
-            <button class="sugg" data-prompt="Give me 10 startup ideas for 2025." role="listitem">
-              <div class="sugg-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M4.93 10.93l4.24 4.24M2 18h6M19.07 10.93l-4.24 4.24M22 18h-6M8 18h8"/></svg>
-              </div>
+            <button class="sugg" type="button" data-prompt="Give me 10 startup ideas for 2025." role="listitem">
+              <div class="sugg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M4.93 10.93l4.24 4.24M2 18h6M19.07 10.93l-4.24 4.24M22 18h-6M8 18h8"/></svg></div>
               <div class="sugg-body">
                 <div class="sugg-title">Creative</div>
                 <div class="sugg-desc">"Give me 10 startup ideas"</div>
               </div>
             </button>
-
-            <button class="sugg" data-prompt="Help me debug this code: " role="listitem">
-              <div class="sugg-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-              </div>
+            <button class="sugg" type="button" data-prompt="Help me debug this code: " role="listitem">
+              <div class="sugg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
               <div class="sugg-body">
                 <div class="sugg-title">Code</div>
                 <div class="sugg-desc">"Help me debug this code"</div>
@@ -188,30 +160,42 @@
           </div>
         </div>
 
-        <!-- Messages container -->
         <div class="messages" id="messages" hidden></div>
       </section>
 
-      <!-- Composer -->
+      <!-- ===================== COMPOSER ===================== -->
+      <!-- The composer is a real <form> so Enter works everywhere.
+           We preventDefault() in JS — this is the FIX for the send bug. -->
       <div class="composer-wrap">
-        <div class="composer" id="composer">
-          <!-- Attachment previews -->
+        <form class="composer" id="composer" autocomplete="off" novalidate>
           <div class="attachments" id="attachments" hidden></div>
 
           <div class="composer-main">
-            <button class="composer-btn" id="attachBtn" aria-label="Attach file" aria-haspopup="true" aria-expanded="false">
+            <button class="composer-btn" id="attachBtn" type="button" aria-label="Attach file" aria-haspopup="true" aria-expanded="false">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
 
-            <textarea class="composer-input" id="composerInput" placeholder="Message AURA AI…" rows="1" aria-label="Message input" maxlength="12000"></textarea>
+            <textarea class="composer-input" id="composerInput" placeholder="Message AURA AI…" rows="1" aria-label="Message input" maxlength="12000" enterkeyhint="send"></textarea>
 
-            <button class="composer-btn" id="micBtn" aria-label="Voice input" aria-pressed="false">
+            <button class="composer-btn" id="micBtn" type="button" aria-label="Voice input" aria-pressed="false">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
             </button>
 
-            <button class="send-btn" id="sendBtn" disabled aria-label="Send message">
-              <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              <svg class="stop-icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            <!-- SEND / STOP BUTTON — single source of truth -->
+            <button
+              class="send-btn"
+              id="sendBtn"
+              type="submit"
+              aria-label="Send message"
+              title="Send message"
+              disabled
+            >
+              <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4.2 3.4 21 12 4.2 20.6 6.9 13 14.5 12 6.9 11 4.2 3.4Z"/>
+              </svg>
+              <svg class="stop-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/>
+              </svg>
             </button>
           </div>
 
@@ -220,13 +204,12 @@
             <span class="composer-counter" id="charCounter"></span>
           </div>
 
-          <!-- Attach menu -->
           <div class="attach-menu" id="attachMenu" role="menu" aria-label="Attachment options">
-            <button class="attach-item" data-kind="image" role="menuitem">
+            <button class="attach-item" type="button" data-kind="image" role="menuitem">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
               <span>Upload image</span>
             </button>
-            <button class="attach-item" data-kind="file" role="menuitem">
+            <button class="attach-item" type="button" data-kind="file" role="menuitem">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
               <span>Upload file</span>
             </button>
@@ -234,7 +217,7 @@
 
           <input type="file" id="imageInput" accept="image/*" hidden multiple />
           <input type="file" id="fileInput" accept=".pdf,.txt,.json,.csv,.md,.log,.js,.ts,.py,.html,.css,.xml,.yaml,.yml" hidden multiple />
-        </div>
+        </form>
       </div>
     </main>
   </div>
@@ -245,20 +228,17 @@
       <div class="recording-pulse"></div>
       <div class="recording-time" id="recordingTime">0:00</div>
       <div class="recording-label">Recording…</div>
-      <div class="recording-bars" aria-hidden="true">
-        <span></span><span></span><span></span><span></span><span></span>
-        <span></span><span></span><span></span><span></span><span></span>
-      </div>
+      <div class="recording-bars" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
       <div class="recording-actions">
-        <button class="btn btn-ghost" id="recordingCancel">Cancel</button>
-        <button class="btn btn-primary" id="recordingSend">Send</button>
+        <button class="btn btn-ghost" id="recordingCancel" type="button">Cancel</button>
+        <button class="btn btn-primary" id="recordingSend" type="button">Send</button>
       </div>
     </div>
   </div>
 
   <!-- Lightbox -->
   <div class="lightbox" id="lightbox" hidden>
-    <button class="lightbox-close" id="lightboxClose" aria-label="Close preview">
+    <button class="lightbox-close" id="lightboxClose" type="button" aria-label="Close preview">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
     <img class="lightbox-img" id="lightboxImg" alt="Preview" />
@@ -269,7 +249,7 @@
     <div class="modal-panel">
       <div class="modal-head">
         <h2 id="settingsTitle">Settings</h2>
-        <button class="icon-btn" id="settingsClose" aria-label="Close settings">
+        <button class="icon-btn" id="settingsClose" type="button" aria-label="Close settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -282,9 +262,9 @@
               <div class="setting-desc">Choose how AURA AI looks</div>
             </div>
             <div class="segmented" id="themeSegmented">
-              <button data-value="dark">Dark</button>
-              <button data-value="light">Light</button>
-              <button data-value="system">System</button>
+              <button type="button" data-value="dark">Dark</button>
+              <button type="button" data-value="light">Light</button>
+              <button type="button" data-value="system">System</button>
             </div>
           </div>
         </section>
@@ -310,7 +290,7 @@
               <div class="setting-label">Clear conversations</div>
               <div class="setting-desc">Permanently delete chat history</div>
             </div>
-            <button class="btn btn-danger" id="clearFromSettings">Clear</button>
+            <button class="btn btn-danger" id="clearFromSettings" type="button">Clear</button>
           </div>
         </section>
 
@@ -329,9 +309,8 @@
     </div>
   </div>
 
-  <!-- Toasts -->
   <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
   <script src="app.js" defer></script>
 </body>
-</html>
+                                                                                                                                                                        </html>
