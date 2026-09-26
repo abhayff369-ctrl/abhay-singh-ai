@@ -1,140 +1,107 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0" />
-  <meta name="theme-color" content="#0a0a0d" />
-  <meta name="description" content="AURA AI — Premium AI Assistant by Abhay Singh" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0f">
+  <meta name="description" content="AURA AI — Premium AI Assistant">
   <title>AURA AI</title>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.css" />
-  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
 </head>
 
 <body>
   <div class="app">
 
-    <!-- Mobile backdrop -->
-    <div class="menu-backdrop" id="menuBackdrop" aria-hidden="true"></div>
-
-    <!-- ============ SIDEBAR ============ -->
-    <aside class="sidebar" id="sidebar" aria-label="Conversations">
-      <div class="sidebar-inner">
-
-        <div class="brand">
-          <div class="brand-logo" aria-hidden="true">A</div>
-          <div class="brand-text">
-            <strong>AURA AI</strong>
-            <span>AI Assistant</span>
-          </div>
-          <button class="icon-btn sidebar-close-mobile" id="sidebarClose" type="button" aria-label="Close menu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-logo">A</div>
+        <div>
+          <strong>AURA AI</strong>
+          <span>AI Assistant</span>
         </div>
+      </div>
 
-        <button class="new-chat" id="newChatBtn" type="button">
-          <span class="plus" aria-hidden="true">+</span>
-          <span>New chat</span>
+      <button class="new-chat" id="newChatBtn">
+        <span class="plus">+</span>
+        <span>New chat</span>
+      </button>
+
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5"></circle>
+          <path d="m16 16 5 5"></path>
+        </svg>
+        <input id="searchInput" type="search" placeholder="Search chats">
+      </div>
+
+      <div class="history" id="history"></div>
+
+      <div class="sidebar-bottom">
+        <button class="side-btn" id="themeBtn">
+          <span>◐</span>
+          <span>Theme</span>
         </button>
 
-        <div class="search-box">
-          <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16">
-            <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/>
-            <path d="m16 16 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
-          <input id="searchInput" type="search" placeholder="Search chats" aria-label="Search chats" autocomplete="off" />
-          <button class="search-clear" id="searchClear" type="button" aria-label="Clear search" hidden>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
+        <button class="side-btn" id="clearBtn">
+          <span>⌫</span>
+          <span>Clear chats</span>
+        </button>
 
-        <div class="history-heading" id="historyHeading">Chats</div>
-        <div class="history" id="history" role="navigation" aria-label="Chat history"></div>
-
-        <div class="sidebar-bottom">
-          <button class="side-btn" id="themeBtn" type="button">
-            <span class="side-icon" id="themeIcon" aria-hidden="true">◐</span>
-            <span>Theme</span>
-          </button>
-
-          <button class="side-btn" id="clearBtn" type="button">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            <span>Clear chats</span>
-          </button>
-
-          <div class="developer">
-            <span>Developer</span>
-            <strong>Abhay Singh</strong>
-          </div>
+        <div class="developer">
+          <span>Developer</span>
+          <strong>Abhay Singh</strong>
         </div>
       </div>
     </aside>
 
-    <!-- ============ MAIN ============ -->
     <main class="main">
 
       <header class="topbar">
-        <button class="icon-btn mobile-only" id="menuBtn" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <button class="icon-btn mobile-only" id="menuBtn" aria-label="Open menu">
+          ☰
         </button>
 
         <div class="top-title">
           <strong>AURA AI</strong>
-          <span id="statusText"><i class="status-dot"></i>Online</span>
+          <span id="statusText">Online</span>
         </div>
 
-        <button class="new-top-btn" id="topNewChat" type="button">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          New chat
+        <button class="new-top-btn" id="topNewChat">
+          + New chat
         </button>
       </header>
 
-      <section class="chat-area" id="chatArea" aria-live="polite">
+      <section class="chat-area" id="chatArea">
 
         <div class="welcome" id="welcome">
-          <div class="aura-orb" aria-hidden="true">
+          <div class="aura-orb">
             <div class="orb-core">A</div>
           </div>
 
           <h1>How can I help you?</h1>
           <p>Ask anything, write code, analyze files, or explore an idea.</p>
 
-          <div class="suggestions" role="list">
-            <button type="button" data-prompt="Explain quantum computing in simple words." role="listitem">
-              <span class="sugg-icon" aria-hidden="true">✦</span>
-              <span class="sugg-body">
-                <strong>Explain something</strong>
-                <em>Clear, simple explanations</em>
-              </span>
+          <div class="suggestions">
+            <button data-prompt="Explain quantum computing in simple words.">
+              <span>✦</span>
+              Explain something
             </button>
 
-            <button type="button" data-prompt="Write a professional website landing page." role="listitem">
-              <span class="sugg-icon" aria-hidden="true">⌘</span>
-              <span class="sugg-body">
-                <strong>Write code</strong>
-                <em>Generate or debug code</em>
-              </span>
+            <button data-prompt="Write a professional website landing page.">
+              <span>⌘</span>
+              Write code
             </button>
 
-            <button type="button" data-prompt="Give me 5 creative project ideas." role="listitem">
-              <span class="sugg-icon" aria-hidden="true">✧</span>
-              <span class="sugg-body">
-                <strong>Brainstorm ideas</strong>
-                <em>Explore creative directions</em>
-              </span>
+            <button data-prompt="Give me 5 creative project ideas.">
+              <span>✧</span>
+              Brainstorm ideas
             </button>
 
-            <button type="button" data-prompt="Help me make a study plan." role="listitem">
-              <span class="sugg-icon" aria-hidden="true">◌</span>
-              <span class="sugg-body">
-                <strong>Make a plan</strong>
-                <em>Structure any goal</em>
-              </span>
+            <button data-prompt="Help me make a study plan.">
+              <span>◌</span>
+              Make a plan
             </button>
           </div>
         </div>
@@ -147,7 +114,7 @@
 
         <div class="attachment-preview" id="attachmentPreview"></div>
 
-        <form class="composer" id="composer" autocomplete="off" novalidate>
+        <form class="composer" id="composer">
 
           <textarea
             id="messageInput"
@@ -155,25 +122,23 @@
             autocomplete="off"
             placeholder="Message AURA AI..."
             aria-label="Message AURA AI"
-            maxlength="12000"
-            enterkeyhint="send"
           ></textarea>
 
           <div class="composer-bottom">
 
             <div class="composer-left">
-              <label class="attach-btn" title="Attach files" aria-label="Attach files">
+              <label class="attach-btn" title="Attach files">
                 <input id="fileInput" type="file" multiple
                   accept="image/*,.pdf,.txt,.json,.csv,.md,.doc,.docx,.audio/*,.video/*">
-                <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20">
-                  <path d="m20.5 11.5-7.8 7.8a5 5 0 0 1-7.1-7.1l8.3-8.3a3.5 3.5 0 0 1 5 5l-8.4 8.4a2 2 0 0 1-2.8-2.8l7.6-7.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m20.5 11.5-7.8 7.8a5 5 0 0 1-7.1-7.1l8.3-8.3a3.5 3.5 0 0 1 5 5l-8.4 8.4a2 2 0 0 1-2.8-2.8l7.6-7.6"></path>
                 </svg>
               </label>
 
-              <button type="button" class="tool-btn" id="voiceBtn" title="Voice message" aria-label="Voice message">
-                <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20">
-                  <rect x="9" y="3" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/>
-                  <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <button type="button" class="tool-btn" id="voiceBtn" title="Voice message">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="9" y="3" width="6" height="11" rx="3"></rect>
+                  <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6"></path>
                 </svg>
               </button>
             </div>
@@ -187,12 +152,12 @@
                 aria-label="Send message"
                 title="Send message"
               >
-                <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true" width="18" height="18">
-                  <path d="M4.5 4.5 20 12 4.5 19.5 7 13l7-1-7-1z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4.5 4.5 20 12 4.5 19.5 7 13l7-1-7-1z"></path>
                 </svg>
 
-                <svg class="stop-icon hidden" viewBox="0 0 24 24" aria-hidden="true" width="18" height="18">
-                  <rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/>
+                <svg class="stop-icon hidden" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="7" y="7" width="10" height="10" rx="2"></rect>
                 </svg>
               </button>
             </div>
@@ -209,6 +174,6 @@
     </main>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="toast" id="toast"></div>
 </body>
 </html>
