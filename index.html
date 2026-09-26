@@ -9,6 +9,11 @@
   >
 
   <meta
+    name="description"
+    content="AURA AI — Premium AI Assistant"
+  >
+
+  <meta
     name="theme-color"
     content="#ffffff"
     media="(prefers-color-scheme: light)"
@@ -20,11 +25,6 @@
     media="(prefers-color-scheme: dark)"
   >
 
-  <meta
-    name="description"
-    content="AURA AI — Premium AI Assistant"
-  >
-
   <title>AURA AI</title>
 
   <link rel="stylesheet" href="/style.css">
@@ -34,20 +34,28 @@
 
   <div class="app">
 
-    <!-- =====================================================
+    <!-- =========================
          SIDEBAR
-         ===================================================== -->
+         ========================= -->
 
-    <aside class="sidebar" id="sidebar">
+    <aside
+      id="sidebar"
+      class="sidebar"
+    >
 
-      <div class="sidebar-top">
+      <div class="sidebar-header">
 
         <div class="brand">
-          <div class="brand-logo">A</div>
 
-          <div class="brand-name">
-            AURA AI
+          <div class="brand-logo">
+            A
           </div>
+
+          <div class="brand-text">
+            <strong>AURA AI</strong>
+            <span>AI Assistant</span>
+          </div>
+
         </div>
 
       </div>
@@ -58,14 +66,54 @@
         class="new-chat-btn"
         type="button"
       >
-        + New Chat
+        <svg viewBox="0 0 24 24">
+          <path d="M12 5v14"></path>
+          <path d="M5 12h14"></path>
+        </svg>
+
+        <span>New Chat</span>
       </button>
 
 
+      <!-- Appearance -->
+
+      <div class="appearance">
+
+        <div class="section-title">
+          Appearance
+        </div>
+
+        <div class="theme-buttons">
+
+          <button
+            id="lightThemeBtn"
+            class="theme-btn"
+            type="button"
+          >
+            <span>☀️</span>
+            <span>Light</span>
+          </button>
+
+          <button
+            id="darkThemeBtn"
+            class="theme-btn"
+            type="button"
+          >
+            <span>🌙</span>
+            <span>Dark</span>
+          </button>
+
+        </div>
+
+      </div>
+
+
+      <!-- History -->
+
       <div class="history">
 
-        <div class="history-title">
-          Chats
+        <div class="section-title">
+          Chat History
         </div>
 
         <div
@@ -78,9 +126,13 @@
 
       <div class="sidebar-footer">
 
-        <small>
+        <div class="developer">
           Developer: Abhay Singh
-        </small>
+        </div>
+
+        <div class="version">
+          AURA AI
+        </div>
 
       </div>
 
@@ -92,23 +144,22 @@
     <div
       id="overlay"
       class="overlay"
-      aria-hidden="true"
     ></div>
 
 
-    <!-- =====================================================
+    <!-- =========================
          MAIN
-         ===================================================== -->
+         ========================= -->
 
     <main class="main">
 
-      <!-- ===================================================
-           TOP BAR
-           =================================================== -->
+      <!-- HEADER -->
 
       <header class="topbar">
 
         <div class="topbar-left">
+
+          <!-- Three line menu -->
 
           <button
             id="menuBtn"
@@ -117,14 +168,13 @@
             aria-label="Open menu"
             title="Menu"
           >
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
+
+            <svg viewBox="0 0 24 24">
               <path d="M4 6h16"></path>
               <path d="M4 12h16"></path>
               <path d="M4 18h16"></path>
             </svg>
+
           </button>
 
 
@@ -135,7 +185,8 @@
             </strong>
 
             <span class="online-status">
-              ● Online
+              <span class="online-dot"></span>
+              Online
             </span>
 
           </div>
@@ -143,22 +194,23 @@
         </div>
 
 
+        <!-- Right side New Chat -->
+
         <div class="topbar-actions">
 
           <button
+            id="headerNewChat"
             class="icon-btn"
             type="button"
-            aria-label="New chat"
-            title="New chat"
-            onclick="document.getElementById('newChatBtn').click()"
+            aria-label="New Chat"
+            title="New Chat"
           >
-            <svg
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
+
+            <svg viewBox="0 0 24 24">
               <path d="M12 5v14"></path>
               <path d="M5 12h14"></path>
             </svg>
+
           </button>
 
         </div>
@@ -166,9 +218,9 @@
       </header>
 
 
-      <!-- ===================================================
+      <!-- =========================
            CHAT AREA
-           =================================================== -->
+           ========================= -->
 
       <section
         id="chat"
@@ -181,9 +233,7 @@
           class="chat-inner"
         >
 
-          <!-- ===============================================
-               WELCOME
-               =============================================== -->
+          <!-- Welcome -->
 
           <div
             id="welcome"
@@ -194,11 +244,9 @@
               A
             </div>
 
-
             <h1>
               How can I help you?
             </h1>
-
 
             <p>
               Welcome to AURA AI. Ask anything, write code,
@@ -214,7 +262,8 @@
                 type="button"
                 data-prompt="Explain this topic in simple language"
               >
-                Explain something simply
+                <span class="suggestion-icon">✦</span>
+                <span>Explain something simply</span>
               </button>
 
 
@@ -223,7 +272,8 @@
                 type="button"
                 data-prompt="Write a professional message for me"
               >
-                Write a professional message
+                <span class="suggestion-icon">✎</span>
+                <span>Write a professional message</span>
               </button>
 
 
@@ -232,7 +282,8 @@
                 type="button"
                 data-prompt="Help me write clean and working code"
               >
-                Help with coding
+                <span class="suggestion-icon">&lt;/&gt;</span>
+                <span>Help with coding</span>
               </button>
 
 
@@ -241,7 +292,8 @@
                 type="button"
                 data-prompt="Give me some creative ideas"
               >
-                Give me creative ideas
+                <span class="suggestion-icon">✧</span>
+                <span>Give me creative ideas</span>
               </button>
 
             </div>
@@ -253,19 +305,18 @@
       </section>
 
 
-      <!-- ===================================================
+      <!-- =========================
            COMPOSER
-           =================================================== -->
+           ========================= -->
 
       <div class="composer-wrap">
 
         <form
           id="composer"
           class="composer"
-          autocomplete="off"
         >
 
-          <!-- Attachment previews -->
+          <!-- Attachments -->
 
           <div
             id="attachments"
@@ -273,7 +324,7 @@
           ></div>
 
 
-          <!-- Message input -->
+          <!-- Text -->
 
           <textarea
             id="messageInput"
@@ -282,11 +333,12 @@
             maxlength="20000"
             placeholder="Message AURA AI..."
             aria-label="Message AURA AI"
+            autocomplete="off"
             spellcheck="true"
           ></textarea>
 
 
-          <!-- Composer buttons -->
+          <!-- Bottom controls -->
 
           <div class="composer-tools">
 
@@ -298,14 +350,11 @@
                 id="attachBtn"
                 class="tool-btn"
                 type="button"
-                title="Attach file"
                 aria-label="Attach file"
+                title="Attach file"
               >
 
-                <svg
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
+                <svg viewBox="0 0 24 24">
                   <path
                     d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.49-8.48"
                   ></path>
@@ -323,20 +372,17 @@
               >
 
 
-              <!-- Voice -->
+              <!-- Microphone -->
 
               <button
                 id="voiceBtn"
                 class="tool-btn"
                 type="button"
-                title="Voice input"
                 aria-label="Voice input"
+                title="Voice input"
               >
 
-                <svg
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
+                <svg viewBox="0 0 24 24">
                   <rect
                     x="9"
                     y="3"
@@ -356,7 +402,6 @@
                   <path
                     d="M8 21h8"
                   ></path>
-
                 </svg>
 
               </button>
@@ -366,19 +411,19 @@
 
             <div class="composer-right">
 
-              <!-- Send / Stop -->
+              <!-- Send -->
 
               <button
                 id="sendBtn"
                 class="send-btn"
                 type="submit"
-                title="Send message"
                 aria-label="Send message"
+                title="Send message"
               >
 
                 <svg
+                  class="send-icon"
                   viewBox="0 0 24 24"
-                  aria-hidden="true"
                 >
                   <path d="M22 2 11 13"></path>
                   <path d="m22 2-7 20-4-9-9-4Z"></path>
@@ -403,10 +448,6 @@
 
   </div>
 
-
-  <!-- =====================================================
-       JAVASCRIPT
-       ===================================================== -->
 
   <script src="/app.js" defer></script>
 
