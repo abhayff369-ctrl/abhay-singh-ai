@@ -1,13 +1,14 @@
 {
-  "name": "abhay-singh-ai",
+  "name": "aura-ai",
   "version": "1.0.0",
   "private": true,
-  "description": "Abhay Singh AI - Gemini powered AI assistant",
-  "type": "module",
-  "engines": {
-    "node": "22.x"
-  },
+  "description": "AURA AI - Gemini powered AI assistant",
+  "type": "commonjs",
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "vercel dev",
+    "build": "echo Static Vercel app"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
