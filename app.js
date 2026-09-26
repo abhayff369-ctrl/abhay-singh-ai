@@ -1,1335 +1,1216 @@
-"use strict";
-
-/* =========================================================
-   AURA AI - FRONTEND
-========================================================= */
-
-const $ = (selector) => document.querySelector(selector);
-
-const welcome = $("#welcome");
-const messagesEl = $("#messages");
-const typingRow = $("#typingRow");
-
-const messageInput = $("#messageInput");
-const sendBtn = $("#sendBtn");
-const stopBtn = $("#stopBtn");
-
-const attachBtn = $("#attachBtn");
-const fileInput = $("#fileInput");
-
-const micBtn = $("#micBtn");
-
-const attachmentPreview = $("#attachmentPreview");
-
-const sidebar = $("#sidebar");
-const sidebarOverlay = $("#sidebarOverlay");
-
-const chatHistory = $("#chatHistory");
-const chatSearch = $("#chatSearch");
-
-const newChatBtn = $("#newChatBtn");
-const topNewChat = $("#topNewChat");
-
-const menuBtn = $("#menuBtn");
-const closeSidebar = $("#closeSidebar");
-
-const themeBtn = $("#themeBtn");
-const themeIcon = $("#themeIcon");
-
-const clearChatsBtn = $("#clearChatsBtn");
-
-const voiceModeBtn = $("#voiceModeBtn");
-
-/* =========================================================
-   STATE
-========================================================= */
-
-let messages = [];
-let pendingAttachments = [];
-
-let currentChatId = null;
-
-let controller = null;
-
-let mediaRecorder = null;
-let audioChunks = [];
-let mediaStream = null;
-
-let voiceMode = false;
-
-const MAX_FILE_SIZE = 8 * 1024 * 1024;
-const MAX_TOTAL_SIZE = 12 * 1024 * 1024;
-const MAX_ATTACHMENTS = 5;
-
-const STORAGE_KEY = "aura_ai_chats_v1";
-const THEME_KEY = "aura_ai_theme";
-
-/* =========================================================
-   INIT
-========================================================= */
-
-document.addEventListener("DOMContentLoaded", () => {
-  loadTheme();
-  loadChats();
-  setupEvents();
-  autoResize();
-});
-
-/* =========================================================
-   EVENTS
-========================================================= */
-
-function setupEvents() {
-
-  messageInput.addEventListener("input", autoResize);
-
-  messageInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      sendMessage();
-    }
-  });
-
-  sendBtn.addEventListener("click", sendMessage);
-
-  stopBtn.addEventListener("click", stopGeneration);
-
-  attachBtn.addEventListener("click", () => {
-    fileInput.click();
-  });
-
-  fileInput.addEventListener("change", async (event) => {
-    await handleFiles([...event.target.files]);
-    fileInput.value = "";
-  });
-
-  micBtn.addEventListener("click", toggleRecording);
-
-  newChatBtn.addEventListener("click", newChat);
-  topNewChat.addEventListener("click", newChat);
-
-  menuBtn.addEventListener("click", openSidebar);
-  closeSidebar.addEventListener("click", closeSidebarMenu);
-  sidebarOverlay.addEventListener("click", closeSidebarMenu);
-
-  themeBtn.addEventListener("click", toggleTheme);
-
-  clearChatsBtn.addEventListener("click", clearAllChats);
-
-  chatSearch.addEventListener("input", renderChatHistory);
-
-  voiceModeBtn.addEventListener("click", toggleVoiceMode);
-
-  document.querySelectorAll(".suggestion").forEach((button) => {
-    button.addEventListener("click", () => {
-      messageInput.value = button.dataset.prompt || "";
-      autoResize();
-      messageInput.focus();
-    });
-  });
-}
-
-/* =========================================================
-   TEXTAREA
-========================================================= */
-
-function autoResize() {
-  messageInput.style.height = "auto";
-
-  const height = Math.min(
-    messageInput.scrollHeight,
-    160
-  );
-
-  messageInput.style.height = `${height}px`;
-}
-
-/* =========================================================
-   FILE HANDLING
-========================================================= */
-
-async function handleFiles(files) {
-
-  if (!files.length) return;
-
-  if (pendingAttachments.length + files.length > MAX_ATTACHMENTS) {
-    alert(`Maximum ${MAX_ATTACHMENTS} attachments allowed.`);
-    return;
-  }
-
-  let totalSize =
-    pendingAttachments.reduce(
-      (sum, item) => sum + item.size,
-      0
-    );
-
-  for (const file of files) {
-
-    if (file.size > MAX_FILE_SIZE) {
-      alert(
-        `${file.name} is too large.\nMaximum size is 8 MB per file.`
-      );
-      continue;
-    }
-
-    totalSize += file.size;
-
-    if (totalSize > MAX_TOTAL_SIZE) {
-      alert("Total attachment size cannot exceed 12 MB.");
-      break;
-    }
-
-    const dataUrl = await readFileAsDataURL(file);
-
-    pendingAttachments.push({
-      id: crypto.randomUUID(),
-      name: file.name,
-      mimeType: file.type || "application/octet-stream",
-      size: file.size,
-      dataUrl
-    });
-  }
-
-  renderAttachmentPreview();
-}
-
-function readFileAsDataURL(file) {
-  return new Promise((resolve, reject) => {
-
-    const reader = new FileReader();
-
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-
-    reader.readAsDataURL(file);
-  });
-}
-
-function renderAttachmentPreview() {
-
-  attachmentPreview.innerHTML = "";
-
-  if (!pendingAttachments.length) {
-    attachmentPreview.classList.add("hidden");
-    return;
-  }
-
-  attachmentPreview.classList.remove("hidden");
-
-  pendingAttachments.forEach((file) => {
-
-    const chip = document.createElement("div");
-    chip.className = "attachment-chip";
-
-    if (file.mimeType.startsWith("image/")) {
-
-      const img = document.createElement("img");
-      img.src = file.dataUrl;
-      img.alt = file.name;
-
-      chip.appendChild(img);
-
-    } else {
-
-      const div = document.createElement("div");
-      div.className = "file-mini";
-
-      div.innerHTML = `
-        <div style="font-size:22px">📄</div>
-        <div>${escapeHTML(shortFileName(file.name))}</div>
-      `;
-
-      chip.appendChild(div);
-    }
-
-    const remove = document.createElement("button");
-
-    remove.className = "remove-attachment";
-    remove.textContent = "×";
-
-    remove.addEventListener("click", () => {
-
-      pendingAttachments =
-        pendingAttachments.filter(
-          item => item.id !== file.id
-        );
-
-      renderAttachmentPreview();
-    });
-
-    chip.appendChild(remove);
-
-    attachmentPreview.appendChild(chip);
-  });
-}
-
-/* =========================================================
-   SEND MESSAGE
-========================================================= */
-
-async function sendMessage(customText = null) {
-
-  if (controller) return;
-
-  const text =
-    customText !== null
-      ? customText.trim()
-      : messageInput.value.trim();
-
-  if (!text && !pendingAttachments.length) {
-    messageInput.focus();
-    return;
-  }
-
-  const attachments = pendingAttachments.map(item => ({
-    id: item.id,
-    name: item.name,
-    mimeType: item.mimeType,
-    size: item.size,
-    dataUrl: item.dataUrl
-  }));
-
-  const userMessage = {
-    id: crypto.randomUUID(),
-    role: "user",
-    text: text || "Please analyze the attached file.",
-    attachments: attachments.map(file => ({
-      id: file.id,
-      name: file.name,
-      mimeType: file.mimeType,
-      size: file.size,
-      dataUrl: file.dataUrl
-    })),
-    createdAt: Date.now()
+/* ============================================================
+   AURA AI — app.js
+   Developer: Abhay Singh
+   ============================================================ */
+
+(() => {
+  'use strict';
+
+  // ---------- CONSTANTS ----------
+  const STORAGE = {
+    THEME: 'aura.theme',
+    CHATS: 'aura.chats',
+    CURRENT: 'aura.current',
+    SETTINGS: 'aura.settings'
+  };
+  const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8 MB
+  const ACCEPTED_IMAGE = /^image\//;
+  const ACCEPTED_DOC = /\.(pdf|txt|json|csv|md|log|js|ts|py|html|css|xml|yaml|yml)$/i;
+
+  // ---------- STATE ----------
+  const state = {
+    conversations: [],
+    currentId: null,
+    model: 'flash',
+    isGenerating: false,
+    abortController: null,
+    attachments: [], // { id, file, name, size, type, dataUrl? }
+    settings: {
+      theme: 'dark',
+      enterToSend: true,
+      voiceMode: false
+    },
+    mediaRecorder: null,
+    recordedChunks: [],
+    recordingStart: 0,
+    recordingTimer: null,
+    voiceModeActive: false
   };
 
-  messages.push(userMessage);
+  // ---------- DOM ----------
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 
-  renderMessages();
-  saveCurrentChat();
+  const dom = {
+    sidebar: $('#sidebar'),
+    backdrop: $('#backdrop'),
+    menuBtn: $('#menuBtn'),
+    sidebarClose: $('#sidebarClose'),
+    newChatBtn: $('#newChatBtn'),
+    headerNewChat: $('#headerNewChat'),
+    searchInput: $('#searchInput'),
+    searchClear: $('#searchClear'),
+    chatHistory: $('#chatHistory'),
+    settingsBtn: $('#settingsBtn'),
+    themeBtn: $('#themeBtn'),
+    themeIcon: $('#themeIcon'),
+    clearAllBtn: $('#clearAllBtn'),
 
-  messageInput.value = "";
-  autoResize();
+    modelBadge: $('#modelBadge'),
+    modelMenu: $('#modelMenu'),
+    modelLabel: $('#modelLabel'),
+    statusPill: $('#statusPill'),
 
-  pendingAttachments = [];
-  renderAttachmentPreview();
+    welcome: $('#welcome'),
+    messages: $('#messages'),
+    chatScroll: $('#chatScroll'),
 
-  welcome.classList.add("hidden");
+    composer: $('#composer'),
+    composerInput: $('#composerInput'),
+    sendBtn: $('#sendBtn'),
+    attachBtn: $('#attachBtn'),
+    attachMenu: $('#attachMenu'),
+    imageInput: $('#imageInput'),
+    fileInput: $('#fileInput'),
+    micBtn: $('#micBtn'),
+    attachments: $('#attachments'),
+    charCounter: $('#charCounter'),
 
-  showTyping();
+    recordingOverlay: $('#recordingOverlay'),
+    recordingTime: $('#recordingTime'),
+    recordingCancel: $('#recordingCancel'),
+    recordingSend: $('#recordingSend'),
 
-  controller = new AbortController();
+    lightbox: $('#lightbox'),
+    lightboxImg: $('#lightboxImg'),
+    lightboxClose: $('#lightboxClose'),
 
-  sendBtn.classList.add("hidden");
-  stopBtn.classList.remove("hidden");
+    settingsModal: $('#settingsModal'),
+    settingsClose: $('#settingsClose'),
+    themeSegmented: $('#themeSegmented'),
+    switchEnter: $('#switchEnter'),
+    switchVoiceMode: $('#switchVoiceMode'),
+    clearFromSettings: $('#clearFromSettings'),
 
-  try {
+    toasts: $('#toasts')
+  };
 
-    const history = messages
-      .slice(0, -1)
-      .slice(-20)
-      .map(message => ({
-        role: message.role,
-        text: message.text
-      }));
+  // ---------- UTILS ----------
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const escapeHtml = (s = '') => s.replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+  const formatBytes = (n) => {
+    if (!n) return '0 B';
+    const u = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(n) / Math.log(1024));
+    return (n / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + u[i];
+  };
+  const formatTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const debounce = (fn, ms = 200) => {
+    let t;
+    return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+  };
+  const dateGroup = (ts) => {
+    const now = new Date();
+    const d = new Date(ts);
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startYesterday = startToday - 86400000;
+    const startWeek = startToday - 7 * 86400000;
+    if (d.getTime() >= startToday) return 'Today';
+    if (d.getTime() >= startYesterday) return 'Yesterday';
+    if (d.getTime() >= startWeek) return 'Previous 7 days';
+    return 'Older';
+  };
 
-    const response = await fetch("/api/chat", {
-      method: "POST",
+  // ---------- TOASTS ----------
+  function toast(message, kind = 'info', ms = 2800) {
+    const el = document.createElement('div');
+    el.className = `toast ${kind}`;
+    el.innerHTML = `<span class="toast-dot"></span><span>${escapeHtml(message)}</span>`;
+    dom.toasts.appendChild(el);
+    setTimeout(() => {
+      el.classList.add('leaving');
+      setTimeout(() => el.remove(), 240);
+    }, ms);
+  }
 
-      headers: {
-        "Content-Type": "application/json"
-      },
+  // ---------- STORAGE ----------
+  function load() {
+    try {
+      const chats = JSON.parse(localStorage.getItem(STORAGE.CHATS) || '[]');
+      if (Array.isArray(chats)) state.conversations = chats;
+    } catch { state.conversations = []; }
+    state.currentId = localStorage.getItem(STORAGE.CURRENT) || null;
+    try {
+      const s = JSON.parse(localStorage.getItem(STORAGE.SETTINGS) || '{}');
+      Object.assign(state.settings, s);
+    } catch {}
+    const theme = localStorage.getItem(STORAGE.THEME);
+    if (theme) state.settings.theme = theme;
+  }
+  function saveChats() {
+    try { localStorage.setItem(STORAGE.CHATS, JSON.stringify(state.conversations)); } catch {}
+  }
+  function saveCurrent() {
+    if (state.currentId) localStorage.setItem(STORAGE.CURRENT, state.currentId);
+    else localStorage.removeItem(STORAGE.CURRENT);
+  }
+  function saveSettings() {
+    try { localStorage.setItem(STORAGE.SETTINGS, JSON.stringify(state.settings)); } catch {}
+  }
 
-      body: JSON.stringify({
-        message: userMessage.text,
-        history,
-        attachments: attachments.map(file => ({
-          name: file.name,
-          mimeType: file.mimeType,
-          size: file.size,
-          data: file.dataUrl
-        }))
-      }),
+  // ---------- THEME ----------
+  function applyTheme(mode) {
+    let effective = mode;
+    if (mode === 'system') {
+      effective = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', effective);
+    state.settings.theme = mode;
+    localStorage.setItem(STORAGE.THEME, mode);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = effective === 'dark' ? '#0a0a12' : '#f6f6fb';
+    // Update icon
+    if (dom.themeIcon) {
+      dom.themeIcon.innerHTML = effective === 'dark'
+        ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
+        : '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+    }
+    // Segmented
+    $$('#themeSegmented button').forEach(b => b.classList.toggle('active', b.dataset.value === mode));
+  }
 
-      signal: controller.signal
+  // ---------- MARKDOWN (safe) ----------
+  function renderMarkdown(src) {
+    if (!src) return '';
+    let text = String(src).replace(/\r\n/g, '\n');
+
+    // Extract code fences first
+    const codeBlocks = [];
+    text = text.replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+      const idx = codeBlocks.length;
+      codeBlocks.push({ lang: lang || 'code', code });
+      return `\u0000CB${idx}\u0000`;
     });
 
-    const data = await response.json().catch(() => ({
-      success: false,
-      error: "Invalid server response."
-    }));
+    // Escape
+    text = escapeHtml(text);
 
-    if (!response.ok || !data.success) {
+    // Headings
+    text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
 
-      throw new Error(
-        data.error ||
-        `Request failed with status ${response.status}`
-      );
-    }
+    // Blockquote
+    text = text.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
 
-    const assistantMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      text: data.text || "I couldn't generate a response.",
-      model: data.usedModel || null,
-      createdAt: Date.now()
+    // Lists
+    text = text.replace(/^\s*[-*] (.+)$/gm, '<li>$1</li>');
+    text = text.replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, '<ul>$1</ul>');
+
+    // Bold / italic / inline code
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, '$1<em>$2</em>');
+    text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+    // Links
+    text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    // Paragraphs
+    text = text.split(/\n{2,}/).map(block => {
+      const t = block.trim();
+      if (!t) return '';
+      if (/^<(h[1-3]|ul|ol|blockquote|pre|table|div)/.test(t)) return t;
+      if (t.startsWith('\u0000CB')) return t;
+      return `<p>${t.replace(/\n/g, '<br>')}</p>`;
+    }).join('');
+
+    // Restore code blocks
+    text = text.replace(/\u0000CB(\d+)\u0000/g, (_, i) => {
+      const { lang, code } = codeBlocks[+i];
+      const id = 'code-' + uid();
+      return `<div class="code-wrap">
+        <div class="code-head">
+          <span>${escapeHtml(lang)}</span>
+          <button class="code-copy" data-code-id="${id}" aria-label="Copy code">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+        </div>
+        <pre><code id="${id}">${escapeHtml(code)}</code></pre>
+      </div>`;
+    });
+
+    return text;
+  }
+
+  // ---------- CONVERSATIONS ----------
+  function createConversation() {
+    const conv = {
+      id: uid(),
+      title: 'New chat',
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     };
-
-    messages.push(assistantMessage);
-
+    state.conversations.unshift(conv);
+    state.currentId = conv.id;
+    saveChats(); saveCurrent();
+    return conv;
+  }
+  function getCurrent() {
+    return state.conversations.find(c => c.id === state.currentId) || null;
+  }
+  function switchTo(id) {
+    state.currentId = id;
+    saveCurrent();
+    renderHistory();
     renderMessages();
-    saveCurrentChat();
-
-    if (voiceMode) {
-      speakText(assistantMessage.text);
+    closeSidebar();
+  }
+  function deleteConversation(id) {
+    const i = state.conversations.findIndex(c => c.id === id);
+    if (i < 0) return;
+    state.conversations.splice(i, 1);
+    if (state.currentId === id) {
+      state.currentId = state.conversations[0]?.id || null;
+      if (!state.currentId) createConversation();
     }
+    saveChats(); saveCurrent();
+    renderHistory();
+    renderMessages();
+    toast('Conversation deleted', 'success');
+  }
+  function renameConversation(id, title) {
+    const c = state.conversations.find(c => c.id === id);
+    if (!c) return;
+    c.title = title.slice(0, 80) || 'Untitled';
+    c.updatedAt = Date.now();
+    saveChats();
+    renderHistory();
+  }
+  function startNewChat() {
+    // If current is empty, just focus
+    const cur = getCurrent();
+    if (cur && cur.messages.length === 0) {
+      dom.composerInput.focus();
+      return;
+    }
+    createConversation();
+    renderHistory();
+    renderMessages();
+    dom.composerInput.value = '';
+    autoResize();
+    updateSendState();
+    dom.composerInput.focus();
+    closeSidebar();
+    toast('New chat started', 'success');
+  }
 
-  } catch (error) {
+  // ---------- RENDER: HISTORY ----------
+  function renderHistory(filter = '') {
+    const q = filter.trim().toLowerCase();
+    const convs = state.conversations
+      .filter(c => !q || c.title.toLowerCase().includes(q) ||
+        c.messages.some(m => (m.content || '').toLowerCase().includes(q)))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
 
-    if (error.name === "AbortError") {
-      hideTyping();
+    if (convs.length === 0) {
+      dom.chatHistory.innerHTML = `<div class="hist-empty">${q ? 'No matching conversations' : 'No conversations yet'}</div>`;
       return;
     }
 
-    console.error(error);
-
-    const errorMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      text:
-        `⚠️ ${error.message || "Something went wrong."}`,
-      isError: true,
-      createdAt: Date.now()
-    };
-
-    messages.push(errorMessage);
-
-    renderMessages();
-    saveCurrentChat();
-
-  } finally {
-
-    controller = null;
-
-    hideTyping();
-
-    sendBtn.classList.remove("hidden");
-    stopBtn.classList.add("hidden");
-  }
-}
-
-/* =========================================================
-   STOP
-========================================================= */
-
-function stopGeneration() {
-
-  if (controller) {
-    controller.abort();
-    controller = null;
-  }
-
-  hideTyping();
-
-  sendBtn.classList.remove("hidden");
-  stopBtn.classList.add("hidden");
-}
-
-/* =========================================================
-   RENDER MESSAGES
-========================================================= */
-
-function renderMessages() {
-
-  messagesEl.innerHTML = "";
-
-  messages.forEach((message) => {
-
-    const row = document.createElement("div");
-
-    row.className =
-      `message-row ${message.role}`;
-
-    const avatar = document.createElement("div");
-
-    avatar.className =
-      `avatar ${
-        message.role === "assistant"
-          ? "assistant-avatar"
-          : ""
-      }`;
-
-    avatar.textContent =
-      message.role === "assistant"
-        ? "✦"
-        : "You";
-
-    const content = document.createElement("div");
-    content.className = "message-content";
-
-    const bubble = document.createElement("div");
-    bubble.className = "message-bubble";
-
-    if (message.role === "assistant") {
-
-      bubble.innerHTML =
-        renderMarkdown(message.text);
-
-    } else {
-
-      bubble.textContent = message.text;
-    }
-
-    content.appendChild(bubble);
-
-    if (
-      message.attachments &&
-      message.attachments.length
-    ) {
-      message.attachments.forEach(file => {
-        content.appendChild(
-          renderAttachmentCard(file)
-        );
-      });
-    }
-
-    if (message.role === "assistant") {
-
-      const actions =
-        document.createElement("div");
-
-      actions.className = "message-actions";
-
-      const copyBtn =
-        createActionButton("Copy", () => {
-          copyText(message.text);
-        });
-
-      const speakBtn =
-        createActionButton("🔊", () => {
-          speakText(message.text);
-        });
-
-      const regenBtn =
-        createActionButton("↻", () => {
-          regenerate(message.id);
-        });
-
-      actions.append(
-        copyBtn,
-        speakBtn,
-        regenBtn
-      );
-
-      content.appendChild(actions);
-    }
-
-    if (message.role === "user") {
-      row.append(content, avatar);
-    } else {
-      row.append(avatar, content);
-    }
-
-    messagesEl.appendChild(row);
-  });
-
-  requestAnimationFrame(() => {
-    const content = $(".content");
-
-    content.scrollTo({
-      top: content.scrollHeight,
-      behavior: "smooth"
+    const groups = {};
+    convs.forEach(c => {
+      const g = dateGroup(c.updatedAt);
+      (groups[g] = groups[g] || []).push(c);
     });
-  });
-}
 
-/* =========================================================
-   ATTACHMENT CARD
-========================================================= */
-
-function renderAttachmentCard(file) {
-
-  const card =
-    document.createElement("div");
-
-  card.className = "attachment-card";
-
-  if (
-    file.mimeType &&
-    file.mimeType.startsWith("image/") &&
-    file.dataUrl
-  ) {
-
-    const img = document.createElement("img");
-
-    img.src = file.dataUrl;
-    img.alt = file.name;
-
-    card.appendChild(img);
-
-  } else {
-
-    const icon =
-      document.createElement("div");
-
-    icon.className = "file-icon";
-    icon.textContent = getFileEmoji(file.mimeType);
-
-    const info =
-      document.createElement("div");
-
-    info.className = "file-info";
-
-    info.innerHTML = `
-      <div class="file-name">
-        ${escapeHTML(file.name)}
-      </div>
-      <div class="file-size">
-        ${formatBytes(file.size)}
-      </div>
-    `;
-
-    card.append(icon, info);
-  }
-
-  return card;
-}
-
-/* =========================================================
-   MARKDOWN
-========================================================= */
-
-function renderMarkdown(text) {
-
-  if (!text) return "";
-
-  const codeBlocks = [];
-
-  let html = escapeHTML(text);
-
-  html = html.replace(
-    /```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g,
-    (_, language, code) => {
-
-      const index = codeBlocks.length;
-
-      codeBlocks.push(`
-        <pre><code>${code.trim()}</code></pre>
-      `);
-
-      return `___CODE_BLOCK_${index}___`;
-    }
-  );
-
-  html = html.replace(
-    /`([^`]+)`/g,
-    '<code class="inline-code">$1</code>'
-  );
-
-  html = html.replace(
-    /\*\*(.*?)\*\*/g,
-    "<strong>$1</strong>"
-  );
-
-  html = html.replace(
-    /\*(.*?)\*/g,
-    "<em>$1</em>"
-  );
-
-  html = html.replace(
-    /(https?:\/\/[^\s<]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-  );
-
-  html = html.replace(/\n/g, "<br>");
-
-  codeBlocks.forEach((block, index) => {
-    html = html.replace(
-      `___CODE_BLOCK_${index}___`,
-      block
-    );
-  });
-
-  return html;
-}
-
-/* =========================================================
-   ACTIONS
-========================================================= */
-
-function createActionButton(text, callback) {
-
-  const button =
-    document.createElement("button");
-
-  button.textContent = text;
-
-  button.addEventListener(
-    "click",
-    callback
-  );
-
-  return button;
-}
-
-async function copyText(text) {
-
-  try {
-
-    await navigator.clipboard.writeText(text);
-
-  } catch {
-
-    const textarea =
-      document.createElement("textarea");
-
-    textarea.value = text;
-
-    document.body.appendChild(textarea);
-
-    textarea.select();
-
-    document.execCommand("copy");
-
-    textarea.remove();
-  }
-}
-
-function regenerate(messageId) {
-
-  const index =
-    messages.findIndex(
-      item => item.id === messageId
-    );
-
-  if (index === -1) return;
-
-  let userIndex = index - 1;
-
-  while (
-    userIndex >= 0 &&
-    messages[userIndex].role !== "user"
-  ) {
-    userIndex--;
-  }
-
-  if (userIndex < 0) return;
-
-  const oldAssistant =
-    messages[index];
-
-  messages.splice(index, 1);
-
-  renderMessages();
-
-  const userMessage =
-    messages[userIndex];
-
-  /*
-    Regeneration with attachments from the
-    current session is supported.
-  */
-
-  pendingAttachments =
-    (userMessage.attachments || []).map(file => ({
-      ...file
-    }));
-
-  sendMessage(userMessage.text);
-}
-
-/* =========================================================
-   TYPING
-========================================================= */
-
-function showTyping() {
-  typingRow.classList.remove("hidden");
-}
-
-function hideTyping() {
-  typingRow.classList.add("hidden");
-}
-
-/* =========================================================
-   VOICE RECORDING
-========================================================= */
-
-async function toggleRecording() {
-
-  if (mediaRecorder &&
-      mediaRecorder.state === "recording") {
-
-    stopRecording();
-    return;
-  }
-
-  if (!navigator.mediaDevices ||
-      !navigator.mediaDevices.getUserMedia) {
-
-    alert(
-      "Voice recording is not supported by this browser."
-    );
-
-    return;
-  }
-
-  try {
-
-    mediaStream =
-      await navigator.mediaDevices.getUserMedia({
-        audio: true
+    const order = ['Today', 'Yesterday', 'Previous 7 days', 'Older'];
+    let html = '';
+    order.forEach(label => {
+      if (!groups[label]) return;
+      html += `<div class="hist-group"><div class="hist-label">${label}</div>`;
+      groups[label].forEach(c => {
+        const active = c.id === state.currentId ? ' active' : '';
+        const title = escapeHtml(c.title || 'New chat');
+        html += `<div class="hist-item${active}" data-id="${c.id}" role="button" tabindex="0" aria-label="Open conversation: ${title}">
+          <svg class="hi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="hi-title">${title}</span>
+          <button class="hi-menu" data-menu="${c.id}" aria-label="Options">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+          </button>
+        </div>`;
       });
+      html += `</div>`;
+    });
+    dom.chatHistory.innerHTML = html;
+  }
 
-    const mimeTypes = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/mp4",
-      "audio/ogg"
-    ];
+  // ---------- RENDER: MESSAGES ----------
+  function renderMessages() {
+    const conv = getCurrent();
+    const has = conv && conv.messages.length > 0;
 
-    let selectedMime = "";
+    dom.welcome.hidden = has;
+    dom.messages.hidden = !has;
 
-    for (const type of mimeTypes) {
+    if (!has) {
+      dom.messages.innerHTML = '';
+      return;
+    }
 
-      if (
-        window.MediaRecorder &&
-        MediaRecorder.isTypeSupported(type)
-      ) {
-        selectedMime = type;
-        break;
+    dom.messages.innerHTML = conv.messages.map((m, i) => renderMessage(m, i)).join('');
+
+    // Scroll to bottom on render
+    requestAnimationFrame(() => {
+      dom.chatScroll.scrollTop = dom.chatScroll.scrollHeight;
+    });
+  }
+
+  function renderMessage(m, idx) {
+    const isUser = m.role === 'user';
+    const name = isUser ? 'You' : 'AURA AI';
+    const avatar = isUser
+      ? '<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-3.34 0-10 1.67-10 5v1h20v-1c0-3.33-6.66-5-10-5Z"/></svg>'
+      : '✦';
+
+    const attachHtml = (m.attachments && m.attachments.length)
+      ? `<div class="msg-attachments">${m.attachments.map(a => renderMessageAttachment(a)).join('')}</div>`
+      : '';
+
+    const bodyHtml = isUser
+      ? `<div class="msg-content">${escapeHtml(m.content || '')}</div>`
+      : `<div class="msg-content">${renderMarkdown(m.content || '')}</div>`;
+
+    const actions = isUser
+      ? `<div class="msg-actions">
+          <button class="msg-action" data-action="copy" data-idx="${idx}" aria-label="Copy">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <button class="msg-action" data-action="resend" data-idx="${idx}" aria-label="Edit and resend">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>
+            Edit
+          </button>
+        </div>`
+      : `<div class="msg-actions">
+          <button class="msg-action" data-action="copy" data-idx="${idx}" aria-label="Copy">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+          <button class="msg-action" data-action="speak" data-idx="${idx}" aria-label="Speak">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            Speak
+          </button>
+          <button class="msg-action" data-action="regenerate" data-idx="${idx}" aria-label="Regenerate">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 18.36 5.64L23 10"/></svg>
+            Regenerate
+          </button>
+        </div>`;
+
+    return `<div class="msg ${isUser ? 'user' : 'assistant'}" data-idx="${idx}">
+      <div class="msg-avatar" aria-hidden="true">${avatar}</div>
+      <div class="msg-body">
+        <div class="msg-name">${name} <span class="time">${formatTime(m.timestamp || Date.now())}</span></div>
+        ${attachHtml}
+        ${bodyHtml}
+        ${actions}
+      </div>
+    </div>`;
+  }
+
+  function renderMessageAttachment(a) {
+    if (a.kind === 'image' && a.dataUrl) {
+      return `<div class="msg-attach"><img src="${a.dataUrl}" alt="${escapeHtml(a.name)}" data-lightbox="${a.dataUrl}" loading="lazy" /></div>`;
+    }
+    return `<div class="msg-attach"><div class="msg-attach-file">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+      <span>${escapeHtml(a.name)}</span>
+    </div></div>`;
+  }
+
+  // ---------- COMPOSER ----------
+  function autoResize() {
+    const ta = dom.composerInput;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+  }
+  function updateSendState() {
+    const hasText = dom.composerInput.value.trim().length > 0;
+    const hasFiles = state.attachments.length > 0;
+    const enabled = (hasText || hasFiles) && !state.isGenerating;
+    dom.sendBtn.disabled = !enabled;
+    dom.sendBtn.classList.toggle('generating', state.isGenerating);
+    const count = dom.composerInput.value.length;
+    dom.charCounter.textContent = count > 3500 ? `${count} / 12000` : '';
+  }
+
+  // ---------- ATTACHMENTS ----------
+  function addAttachments(files) {
+    const accept = [];
+    for (const f of files) {
+      if (f.size > MAX_FILE_SIZE) { toast(`${f.name} is too large (max ${formatBytes(MAX_FILE_SIZE)})`, 'error'); continue; }
+      const isImage = ACCEPTED_IMAGE.test(f.type);
+      const isDoc = ACCEPTED_DOC.test(f.name) || f.type === 'application/pdf';
+      if (!isImage && !isDoc) { toast(`${f.name}: unsupported file type`, 'error'); continue; }
+      const att = { id: uid(), file: f, name: f.name, size: f.size, type: f.type, kind: isImage ? 'image' : 'file' };
+      accept.push(att);
+    }
+    state.attachments.push(...accept);
+    renderAttachments();
+    updateSendState();
+  }
+
+  function renderAttachments() {
+    if (!state.attachments.length) {
+      dom.attachments.hidden = true;
+      dom.attachments.innerHTML = '';
+      return;
+    }
+    dom.attachments.hidden = false;
+    dom.attachments.innerHTML = state.attachments.map(a => {
+      const preview = a.kind === 'image' && a.dataUrl
+        ? `<img src="${a.dataUrl}" alt="" />`
+        : '';
+      return `<div class="attach-chip" data-id="${a.id}">
+        ${preview}
+        <div class="attach-chip-info">
+          <div class="attach-chip-name">${escapeHtml(a.name)}</div>
+          <div class="attach-chip-size">${formatBytes(a.size)}</div>
+        </div>
+        <button class="attach-chip-remove" data-remove="${a.id}" aria-label="Remove attachment">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>`;
+    }).join('');
+  }
+
+  function readAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
+  }
+
+  async function hydrateAttachmentPreviews() {
+    for (const a of state.attachments) {
+      if (a.kind === 'image' && !a.dataUrl) {
+        try { a.dataUrl = await readAsDataUrl(a.file); } catch {}
       }
     }
-
-    mediaRecorder = selectedMime
-      ? new MediaRecorder(
-          mediaStream,
-          { mimeType: selectedMime }
-        )
-      : new MediaRecorder(mediaStream);
-
-    audioChunks = [];
-
-    mediaRecorder.ondataavailable =
-      event => {
-
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      };
-
-    mediaRecorder.onstop =
-      async () => {
-
-        const blob =
-          new Blob(
-            audioChunks,
-            {
-              type:
-                mediaRecorder.mimeType ||
-                "audio/webm"
-            }
-          );
-
-        await addVoiceAttachment(blob);
-
-        if (mediaStream) {
-          mediaStream
-            .getTracks()
-            .forEach(track => track.stop());
-        }
-      };
-
-    mediaRecorder.start();
-
-    micBtn.classList.add("recording");
-    micBtn.textContent = "■";
-    micBtn.title = "Stop recording";
-
-  } catch (error) {
-
-    console.error(error);
-
-    alert(
-      "Microphone permission was denied or unavailable."
-    );
-  }
-}
-
-function stopRecording() {
-
-  if (
-    mediaRecorder &&
-    mediaRecorder.state !== "inactive"
-  ) {
-    mediaRecorder.stop();
+    renderAttachments();
   }
 
-  micBtn.classList.remove("recording");
-  micBtn.textContent = "🎙";
-  micBtn.title = "Voice message";
-}
+  // ---------- SEND ----------
+  async function sendMessage() {
+    if (state.isGenerating) return;
+    const text = dom.composerInput.value.trim();
+    if (!text && state.attachments.length === 0) return;
 
-async function addVoiceAttachment(blob) {
+    const conv = getCurrent() || createConversation();
 
-  if (blob.size > MAX_FILE_SIZE) {
-
-    alert("Voice message is larger than 8 MB.");
-    return;
-  }
-
-  const dataUrl =
-    await blobToDataURL(blob);
-
-  let extension = "webm";
-
-  if (blob.type.includes("mp4")) {
-    extension = "m4a";
-  } else if (blob.type.includes("ogg")) {
-    extension = "ogg";
-  }
-
-  pendingAttachments.push({
-    id: crypto.randomUUID(),
-    name: `voice-message-${Date.now()}.${extension}`,
-    mimeType: blob.type || "audio/webm",
-    size: blob.size,
-    dataUrl
-  });
-
-  renderAttachmentPreview();
-}
-
-function blobToDataURL(blob) {
-
-  return new Promise((resolve, reject) => {
-
-    const reader = new FileReader();
-
-    reader.onloadend = () =>
-      resolve(reader.result);
-
-    reader.onerror = reject;
-
-    reader.readAsDataURL(blob);
-  });
-}
-
-/* =========================================================
-   SPEECH
-========================================================= */
-
-function speakText(text) {
-
-  if (!("speechSynthesis" in window)) {
-
-    alert(
-      "Text-to-speech is not supported by this browser."
-    );
-
-    return;
-  }
-
-  window.speechSynthesis.cancel();
-
-  const cleanText =
-    text
-      .replace(/```[\s\S]*?```/g, " code ")
-      .replace(/[*_#]/g, "")
-      .trim();
-
-  const utterance =
-    new SpeechSynthesisUtterance(cleanText);
-
-  const containsHindi =
-    /[\u0900-\u097F]/.test(cleanText);
-
-  utterance.lang =
-    containsHindi
-      ? "hi-IN"
-      : "en-US";
-
-  utterance.rate = .95;
-  utterance.pitch = 1;
-
-  window.speechSynthesis.speak(
-    utterance
-  );
-}
-
-function toggleVoiceMode() {
-
-  voiceMode = !voiceMode;
-
-  voiceModeBtn.classList.toggle(
-    "active",
-    voiceMode
-  );
-
-  voiceModeBtn.textContent =
-    voiceMode
-      ? "🔊 Voice mode: On"
-      : "🔊 Voice mode: Off";
-}
-
-/* =========================================================
-   CHAT STORAGE
-========================================================= */
-
-function getChats() {
-
-  try {
-
-    return JSON.parse(
-      localStorage.getItem(STORAGE_KEY) || "[]"
-    );
-
-  } catch {
-
-    return [];
-  }
-}
-
-function saveChats(chats) {
-
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(chats)
-  );
-}
-
-function saveCurrentChat() {
-
-  if (!messages.length) return;
-
-  const chats = getChats();
-
-  let chat =
-    chats.find(
-      item => item.id === currentChatId
-    );
-
-  const firstUser =
-    messages.find(
-      item => item.role === "user"
-    );
-
-  const title =
-    firstUser
-      ? firstUser.text.slice(0, 45)
-      : "New chat";
-
-  if (!chat) {
-
-    currentChatId =
-      currentChatId ||
-      crypto.randomUUID();
-
-    chat = {
-      id: currentChatId,
-      title,
-      messages: [],
-      updatedAt: Date.now()
-    };
-
-    chats.unshift(chat);
-
-  } else {
-
-    chat.title = title;
-    chat.updatedAt = Date.now();
-  }
-
-  /*
-    Do not persist large base64 files.
-    Only save attachment metadata.
-  */
-
-  chat.messages =
-    messages.map(message => ({
-      ...message,
-
-      attachments:
-        (message.attachments || [])
-          .map(file => ({
-            id: file.id,
-            name: file.name,
-            mimeType: file.mimeType,
-            size: file.size
-          }))
+    // Snapshot attachments (dataUrl included for images so messages can display them)
+    const atts = state.attachments.map(a => ({
+      id: a.id,
+      name: a.name,
+      size: a.size,
+      type: a.type,
+      kind: a.kind,
+      dataUrl: a.dataUrl || null
     }));
 
-  saveChats(chats);
+    // Push user message
+    const userMsg = {
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+      attachments: atts
+    };
+    conv.messages.push(userMsg);
+    if (conv.messages.filter(m => m.role === 'user').length === 1) {
+      conv.title = (text || atts[0]?.name || 'New chat').slice(0, 60);
+    }
+    conv.updatedAt = Date.now();
+    saveChats();
 
-  renderChatHistory();
-}
+    // Reset composer
+    dom.composerInput.value = '';
+    state.attachments = [];
+    renderAttachments();
+    autoResize();
+    updateSendState();
 
-function loadChats() {
+    renderMessages();
+    renderHistory();
 
-  const chats = getChats();
+    // Show thinking
+    state.isGenerating = true;
+    updateSendState();
+    showThinking();
 
-  if (!chats.length) {
-    startEmptyChat();
-    return;
+    const history = conv.messages.slice(0, -1).map(m => ({
+      role: m.role,
+      content: m.content || ''
+    }));
+
+    state.abortController = new AbortController();
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text || '(attachment)',
+          history,
+          model: state.model
+        }),
+        signal: state.abortController.signal
+      });
+
+      let data = null;
+      try { data = await res.json(); } catch {}
+
+      hideThinking();
+
+      if (!res.ok || !data || data.success === false) {
+        const errText = (data && (data.error || data.message)) ||
+          `Request failed (${res.status} ${res.statusText || ''})`.trim();
+        pushAssistantError(conv, errText);
+      } else {
+        const reply = data.message || data.reply || data.content || '';
+        if (!reply) {
+          pushAssistantError(conv, 'Empty response from server.');
+        } else {
+          conv.messages.push({
+            role: 'assistant',
+            content: reply,
+            timestamp: Date.now(),
+            model: data.model || state.model
+          });
+          conv.updatedAt = Date.now();
+          saveChats();
+          renderMessages();
+          renderHistory();
+
+          if (state.settings.voiceMode) speak(reply);
+        }
+      }
+    } catch (err) {
+      hideThinking();
+      if (err.name === 'AbortError') {
+        conv.messages.push({
+          role: 'assistant',
+          content: '(Response stopped)',
+          timestamp: Date.now()
+        });
+        saveChats();
+        renderMessages();
+      } else {
+        pushAssistantError(conv, 'Network error. Please check your connection and try again.');
+      }
+    } finally {
+      state.isGenerating = false;
+      state.abortController = null;
+      updateSendState();
+      dom.composerInput.focus();
+    }
   }
 
-  const first = chats[0];
-
-  currentChatId = first.id;
-
-  messages =
-    first.messages || [];
-
-  renderMessages();
-
-  if (messages.length) {
-    welcome.classList.add("hidden");
+  function pushAssistantError(conv, message) {
+    conv.messages.push({
+      role: 'assistant',
+      error: true,
+      content: message,
+      timestamp: Date.now()
+    });
+    saveChats();
+    renderMessages();
   }
-}
 
-function renderChatHistory() {
+  function showThinking() {
+    if (document.getElementById('thinkingMsg')) return;
+    const el = document.createElement('div');
+    el.id = 'thinkingMsg';
+    el.className = 'msg assistant';
+    el.innerHTML = `
+      <div class="msg-avatar" aria-hidden="true">✦</div>
+      <div class="msg-body">
+        <div class="msg-name">AURA AI</div>
+        <div class="thinking">
+          <span class="thinking-star">✦</span>
+          <span class="thinking-text">Thinking<span class="thinking-dots"><span></span><span></span><span></span></span></span>
+        </div>
+      </div>`;
+    dom.messages.appendChild(el);
+    dom.chatScroll.scrollTop = dom.chatScroll.scrollHeight;
+  }
+  function hideThinking() {
+    document.getElementById('thinkingMsg')?.remove();
+  }
 
-  const query =
-    chatSearch.value.trim().toLowerCase();
+  // Show errors beautifully instead of blank bubbles
+  function decorateErrorMessages() {
+    // Post-process: convert error messages to error card markup
+    $$('.msg.assistant').forEach(el => {
+      const idx = +el.dataset.idx;
+      const conv = getCurrent();
+      const m = conv?.messages[idx];
+      if (!m || !m.error) return;
+      const contentEl = el.querySelector('.msg-content');
+      if (!contentEl || contentEl.dataset.errored) return;
+      contentEl.dataset.errored = '1';
+      contentEl.innerHTML = `
+        <div class="error-card">
+          <div class="error-card-icon">⚠️</div>
+          <div>
+            <div class="error-card-title">AURA AI couldn't complete that request.</div>
+            <div class="error-card-desc">${escapeHtml(m.content)}</div>
+            <button class="retry-btn" data-retry="${idx}">Try again</button>
+          </div>
+        </div>`;
+    });
+  }
 
-  chatHistory.innerHTML = "";
+  // ---------- VOICE (recording) ----------
+  async function toggleRecording() {
+    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+      stopRecording();
+      return;
+    }
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      toast('Voice recording is not supported in this browser.', 'warn');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      state.mediaRecorder = rec;
+      state.recordedChunks = [];
+      rec.ondataavailable = (e) => { if (e.data.size) state.recordedChunks.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        state.mediaRecorder = null;
+      };
+      rec.start();
+      state.recordingStart = Date.now();
+      dom.recordingOverlay.hidden = false;
+      dom.recordingOverlay.style.display = 'flex';
+      dom.micBtn.classList.add('recording');
+      dom.micBtn.setAttribute('aria-pressed', 'true');
+      state.recordingTimer = setInterval(() => {
+        const s = Math.floor((Date.now() - state.recordingStart) / 1000);
+        dom.recordingTime.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      }, 250);
+    } catch (err) {
+      if (err.name === 'NotAllowedError') toast('Microphone permission denied.', 'error');
+      else toast('Unable to start voice recording.', 'error');
+    }
+  }
 
-  const chats =
-    getChats()
-      .sort(
-        (a, b) =>
-          b.updatedAt - a.updatedAt
-      )
-      .filter(chat =>
-        !query ||
-        chat.title
-          .toLowerCase()
-          .includes(query)
-      );
+  function stopRecording() {
+    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+      state.mediaRecorder.stop();
+    }
+    clearInterval(state.recordingTimer);
+    dom.recordingOverlay.hidden = true;
+    dom.recordingOverlay.style.display = '';
+    dom.micBtn.classList.remove('recording');
+    dom.micBtn.setAttribute('aria-pressed', 'false');
+  }
 
-  chats.forEach(chat => {
+  function cancelRecording() {
+    state.recordedChunks = [];
+    stopRecording();
+    toast('Recording discarded', 'info');
+  }
 
-    const button =
-      document.createElement("button");
+  async function sendRecording() {
+    const chunks = state.recordedChunks.slice();
+    stopRecording();
+    if (!chunks.length) return;
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
+    const att = { id: uid(), file, name: file.name, size: file.size, type: file.type, kind: 'file' };
+    state.attachments.push(att);
+    renderAttachments();
+    updateSendState();
+    toast('Voice note attached', 'success');
+  }
 
-    button.className =
-      "chat-item" +
-      (
-        chat.id === currentChatId
-          ? " active"
-          : ""
-      );
+  // ---------- VOICE (speech synthesis) ----------
+  function pickVoice(text) {
+    const voices = window.speechSynthesis?.getVoices() || [];
+    if (!voices.length) return null;
+    const isHindi = /[\u0900-\u097F]/.test(text);
+    if (isHindi) {
+      return voices.find(v => /hi-IN/i.test(v.lang)) || voices.find(v => /hi/i.test(v.lang)) || null;
+    }
+    return voices.find(v => /en-US/i.test(v.lang)) || voices.find(v => /en-GB/i.test(v.lang)) ||
+      voices.find(v => /en/i.test(v.lang)) || voices[0];
+  }
 
-    button.innerHTML = `
-      <span>💬</span>
-      <span class="chat-item-title">
-        ${escapeHTML(chat.title)}
-      </span>
+  function speak(text) {
+    if (!window.speechSynthesis || !text) {
+      toast('Speech playback is not supported in this browser.', 'warn');
+      return;
+    }
+    window.speechSynthesis.cancel();
+    // Trim code blocks (speak only text-ish)
+    const clean = String(text).replace(/```[\s\S]*?```/g, ' code block ').replace(/[*_`#>]/g, '');
+    const u = new SpeechSynthesisUtterance(clean.slice(0, 4000));
+    const v = pickVoice(clean);
+    if (v) u.voice = v;
+    u.rate = 1; u.pitch = 1;
+    window.speechSynthesis.speak(u);
+  }
+  function stopSpeaking() { window.speechSynthesis?.cancel(); }
+
+  // ---------- SIDEBAR ----------
+  function openSidebar() {
+    if (window.innerWidth <= 860) {
+      dom.sidebar.classList.add('open');
+      dom.backdrop.classList.add('visible');
+      dom.menuBtn.setAttribute('aria-expanded', 'true');
+    }
+  }
+  function closeSidebar() {
+    if (window.innerWidth <= 860) {
+      dom.sidebar.classList.remove('open');
+      dom.backdrop.classList.remove('visible');
+      dom.menuBtn.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  // ---------- MODEL MENU ----------
+  function setModel(m) {
+    state.model = m;
+    const labels = { flash: 'AURA · Flash', pro: 'AURA · Pro', auto: 'AURA · Auto' };
+    dom.modelLabel.textContent = labels[m] || labels.flash;
+    $$('.model-item').forEach(it => {
+      const on = it.dataset.model === m;
+      it.classList.toggle('selected', on);
+      it.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    dom.modelMenu.classList.remove('open');
+    dom.modelBadge.setAttribute('aria-expanded', 'false');
+    toast(`Model: ${labels[m]}`, 'success');
+  }
+
+  // ---------- SETTINGS MODAL ----------
+  function openSettings() {
+    dom.settingsModal.hidden = false;
+    dom.settingsModal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSettings() {
+    dom.settingsModal.hidden = true;
+    dom.settingsModal.style.display = '';
+    document.body.style.overflow = '';
+  }
+
+  // ---------- EVENTS ----------
+  function bindEvents() {
+    // Sidebar
+    dom.menuBtn.addEventListener('click', openSidebar);
+    dom.sidebarClose.addEventListener('click', closeSidebar);
+    dom.backdrop.addEventListener('click', closeSidebar);
+
+    dom.newChatBtn.addEventListener('click', startNewChat);
+    dom.headerNewChat.addEventListener('click', startNewChat);
+
+    dom.searchInput.addEventListener('input', debounce((e) => {
+      const v = e.target.value;
+      dom.searchClear.hidden = !v;
+      renderHistory(v);
+    }, 150));
+    dom.searchClear.addEventListener('click', () => {
+      dom.searchInput.value = '';
+      dom.searchClear.hidden = true;
+      renderHistory('');
+      dom.searchInput.focus();
+    });
+
+    // History: delegate
+    dom.chatHistory.addEventListener('click', (e) => {
+      const menuBtn = e.target.closest('.hi-menu');
+      if (menuBtn) {
+        e.stopPropagation();
+        openHistoryMenu(menuBtn, menuBtn.dataset.menu);
+        return;
+      }
+      const item = e.target.closest('.hist-item');
+      if (item) switchTo(item.dataset.id);
+    });
+    dom.chatHistory.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const item = e.target.closest('.hist-item');
+      if (item) { e.preventDefault(); switchTo(item.dataset.id); }
+    });
+
+    // Settings / theme / clear
+    dom.settingsBtn.addEventListener('click', openSettings);
+    dom.settingsClose.addEventListener('click', closeSettings);
+    dom.settingsModal.addEventListener('click', (e) => {
+      if (e.target === dom.settingsModal) closeSettings();
+    });
+    dom.themeBtn.addEventListener('click', () => {
+      const next = state.settings.theme === 'dark' ? 'light' : 'dark';
+      applyTheme(next);
+      toast(`Theme: ${next}`, 'success');
+    });
+    dom.clearAllBtn.addEventListener('click', () => {
+      if (!state.conversations.length) { toast('No conversations to clear', 'info'); return; }
+      if (confirm('Delete all conversations? This cannot be undone.')) {
+        state.conversations = [];
+        state.currentId = null;
+        saveChats(); saveCurrent();
+        createConversation();
+        renderHistory(); renderMessages();
+        toast('All conversations cleared', 'success');
+      }
+    });
+
+    // Model menu
+    dom.modelBadge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = dom.modelMenu.classList.toggle('open');
+      dom.modelBadge.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    $$('.model-item').forEach(it => it.addEventListener('click', () => setModel(it.dataset.model)));
+
+    // Composer
+    dom.composerInput.addEventListener('input', () => { autoResize(); updateSendState(); });
+    dom.composerInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && state.settings.enterToSend && !e.isComposing) {
+        e.preventDefault();
+        if (!dom.sendBtn.disabled) sendMessage();
+      }
+    });
+    dom.sendBtn.addEventListener('click', () => {
+      if (state.isGenerating) {
+        state.abortController?.abort();
+        return;
+      }
+      sendMessage();
+    });
+
+    // Attach
+    dom.attachBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = dom.attachMenu.classList.toggle('open');
+      dom.attachBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    $$('.attach-item').forEach(it => it.addEventListener('click', () => {
+      dom.attachMenu.classList.remove('open');
+      dom.attachBtn.setAttribute('aria-expanded', 'false');
+      if (it.dataset.kind === 'image') dom.imageInput.click();
+      else dom.fileInput.click();
+    }));
+    dom.imageInput.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length) await addAttachmentsAndPreview(files);
+      e.target.value = '';
+    });
+    dom.fileInput.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length) await addAttachmentsAndPreview(files);
+      e.target.value = '';
+    });
+
+    dom.attachments.addEventListener('click', (e) => {
+      const rm = e.target.closest('[data-remove]');
+      if (!rm) return;
+      state.attachments = state.attachments.filter(a => a.id !== rm.dataset.remove);
+      renderAttachments();
+      updateSendState();
+    });
+
+    // Mic
+    dom.micBtn.addEventListener('click', toggleRecording);
+    dom.recordingCancel.addEventListener('click', cancelRecording);
+    dom.recordingSend.addEventListener('click', sendRecording);
+
+    // Message actions: delegate
+    dom.messages.addEventListener('click', async (e) => {
+      const codeBtn = e.target.closest('.code-copy');
+      if (codeBtn) {
+        const el = document.getElementById(codeBtn.dataset.codeId);
+        if (el) {
+          try {
+            await navigator.clipboard.writeText(el.textContent);
+            codeBtn.classList.add('copied');
+            codeBtn.querySelector('svg')?.insertAdjacentHTML('afterend', '');
+            const orig = codeBtn.innerHTML;
+            codeBtn.innerHTML = '✓ Copied';
+            setTimeout(() => { codeBtn.classList.remove('copied'); codeBtn.innerHTML = orig; }, 1200);
+          } catch { toast('Copy failed', 'error'); }
+        }
+        return;
+      }
+
+      const lb = e.target.closest('[data-lightbox]');
+      if (lb) { openLightbox(lb.dataset.lightbox); return; }
+
+      const retry = e.target.closest('[data-retry]');
+      if (retry) {
+        const idx = +retry.dataset.retry;
+        regenerateFrom(idx);
+        return;
+      }
+
+      const act = e.target.closest('.msg-action');
+      if (!act) return;
+      const idx = +act.dataset.idx;
+      const conv = getCurrent();
+      if (!conv) return;
+      const m = conv.messages[idx];
+      if (!m) return;
+
+      if (act.dataset.action === 'copy') {
+        try { await navigator.clipboard.writeText(m.content || ''); toast('Copied to clipboard', 'success'); }
+        catch { toast('Copy failed', 'error'); }
+      } else if (act.dataset.action === 'speak') {
+        speak(m.content || '');
+      } else if (act.dataset.action === 'regenerate') {
+        regenerateFrom(idx);
+      } else if (act.dataset.action === 'resend') {
+        dom.composerInput.value = m.content || '';
+        autoResize(); updateSendState(); dom.composerInput.focus();
+      }
+    });
+
+    // Lightbox
+    dom.lightboxClose.addEventListener('click', closeLightbox);
+    dom.lightbox.addEventListener('click', (e) => {
+      if (e.target === dom.lightbox) closeLightbox();
+    });
+
+    // Settings controls
+    $$('#themeSegmented button').forEach(b => b.addEventListener('click', () => {
+      applyTheme(b.dataset.value);
+      saveSettings();
+    }));
+    dom.switchEnter.addEventListener('click', () => toggleSwitch(dom.switchEnter, 'enterToSend'));
+    dom.switchVoiceMode.addEventListener('click', () => toggleSwitch(dom.switchVoiceMode, 'voiceMode'));
+    [dom.switchEnter, dom.switchVoiceMode].forEach(el => el.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); el.click(); }
+    }));
+    dom.clearFromSettings.addEventListener('click', () => {
+      if (!state.conversations.length) { toast('No conversations to clear', 'info'); return; }
+      if (confirm('Delete all conversations?')) {
+        state.conversations = []; state.currentId = null;
+        saveChats(); saveCurrent(); createConversation();
+        renderHistory(); renderMessages();
+        closeSettings();
+        toast('Cleared', 'success');
+      }
+    });
+
+    // Global: outside clicks
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#modelBadge') && !e.target.closest('#modelMenu')) {
+        dom.modelMenu.classList.remove('open');
+        dom.modelBadge.setAttribute('aria-expanded', 'false');
+      }
+      if (!e.target.closest('#attachBtn') && !e.target.closest('#attachMenu')) {
+        dom.attachMenu.classList.remove('open');
+        dom.attachBtn.setAttribute('aria-expanded', 'false');
+      }
+      const ctx = document.getElementById('ctxMenu');
+      if (ctx && !e.target.closest('#ctxMenu')) ctx.remove();
+    });
+
+    // Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeSidebar();
+        closeSettings();
+        closeLightbox();
+        dom.modelMenu.classList.remove('open');
+        dom.attachMenu.classList.remove('open');
+        document.getElementById('ctxMenu')?.remove();
+        stopSpeaking();
+      }
+      // ⌘K / Ctrl+K → new chat (like Google/Gemini)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        startNewChat();
+      }
+      // ⌘/ → focus search
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+        e.preventDefault();
+        openSidebar();
+        dom.searchInput.focus();
+      }
+    });
+
+    // Enter on suggestions
+    $$('.sugg').forEach(s => {
+      s.addEventListener('click', () => {
+        const p = s.dataset.prompt || '';
+        dom.composerInput.value = p;
+        autoResize(); updateSendState();
+        dom.composerInput.focus();
+      });
+    });
+
+    // System theme listener
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
+      if (state.settings.theme === 'system') applyTheme('system');
+    });
+
+    // Online / offline
+    window.addEventListener('online', () => setStatus(true));
+    window.addEventListener('offline', () => setStatus(false));
+  }
+
+  function setStatus(online) {
+    dom.statusPill.classList.toggle('offline', !online);
+    dom.statusPill.querySelector('.status-text').textContent = online ? 'Online' : 'Offline';
+  }
+
+  async function addAttachmentsAndPreview(files) {
+    const before = state.attachments.length;
+    addAttachments(files);
+    // Read image previews for newly added
+    const added = state.attachments.slice(before);
+    await Promise.all(added.filter(a => a.kind === 'image').map(async a => {
+      try { a.dataUrl = await readAsDataUrl(a.file); } catch {}
+    }));
+    renderAttachments();
+  }
+
+  function toggleSwitch(el, key) {
+    const on = el.classList.toggle('on');
+    el.setAttribute('aria-checked', on ? 'true' : 'false');
+    state.settings[key] = on;
+    saveSettings();
+    if (key === 'voiceMode' && !on) stopSpeaking();
+  }
+
+  function openLightbox(src) {
+    dom.lightboxImg.src = src;
+    dom.lightbox.hidden = false;
+    dom.lightbox.style.display = 'flex';
+  }
+  function closeLightbox() {
+    dom.lightbox.hidden = true;
+    dom.lightbox.style.display = '';
+    dom.lightboxImg.src = '';
+  }
+
+  // ---------- HISTORY CONTEXT MENU ----------
+  function openHistoryMenu(anchor, id) {
+    document.getElementById('ctxMenu')?.remove();
+    const menu = document.createElement('div');
+    menu.id = 'ctxMenu';
+    menu.style.cssText = `
+      position:fixed; z-index:500; background:var(--surface); border:1px solid var(--border);
+      border-radius:12px; box-shadow:var(--shadow-lg); padding:6px; min-width:170px;
+      animation: fadeUp .18s var(--ease);
     `;
+    const conv = state.conversations.find(c => c.id === id);
+    menu.innerHTML = `
+      <button class="attach-item" data-act="rename">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>
+        Rename
+      </button>
+      <button class="attach-item" data-act="delete" style="color:var(--danger)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        Delete
+      </button>`;
+    document.body.appendChild(menu);
+    const r = anchor.getBoundingClientRect();
+    let top = r.bottom + 6, left = r.left;
+    if (left + 180 > window.innerWidth) left = window.innerWidth - 190;
+    if (top + 120 > window.innerHeight) top = r.top - 120;
+    menu.style.top = top + 'px';
+    menu.style.left = left + 'px';
 
-    button.addEventListener(
-      "click",
-      () => loadChat(chat.id)
-    );
-
-    chatHistory.appendChild(button);
-  });
-}
-
-function loadChat(id) {
-
-  const chats = getChats();
-
-  const chat =
-    chats.find(
-      item => item.id === id
-    );
-
-  if (!chat) return;
-
-  currentChatId = chat.id;
-
-  messages =
-    chat.messages || [];
-
-  pendingAttachments = [];
-
-  renderAttachmentPreview();
-  renderMessages();
-
-  if (messages.length) {
-    welcome.classList.add("hidden");
-  } else {
-    welcome.classList.remove("hidden");
+    menu.querySelector('[data-act="rename"]').addEventListener('click', () => {
+      menu.remove();
+      const next = prompt('Rename conversation:', conv?.title || '');
+      if (next != null && next.trim()) renameConversation(id, next.trim());
+    });
+    menu.querySelector('[data-act="delete"]').addEventListener('click', () => {
+      menu.remove();
+      if (confirm('Delete this conversation?')) deleteConversation(id);
+    });
   }
 
-  renderChatHistory();
+  // ---------- REGENERATE ----------
+  async function regenerateFrom(idx) {
+    const conv = getCurrent();
+    if (!conv || state.isGenerating) return;
+    // Trim from idx
+    const target = conv.messages[idx];
+    if (!target) return;
+    conv.messages = conv.messages.slice(0, idx);
+    saveChats();
+    renderMessages();
 
-  closeSidebarMenu();
-}
+    // Find last user
+    const lastUser = [...conv.messages].reverse().find(m => m.role === 'user');
+    if (!lastUser) return;
 
-function newChat() {
-
-  if (controller) {
-    stopGeneration();
+    // Re-inject last user content into composer and send
+    dom.composerInput.value = lastUser.content || '';
+    autoResize(); updateSendState();
+    // Remove the last user message so sendMessage doesn't duplicate
+    conv.messages = conv.messages.slice(0, -1);
+    saveChats();
+    renderMessages();
+    sendMessage();
   }
 
-  currentChatId = null;
+  // ---------- INIT ----------
+  function init() {
+    load();
+    applyTheme(state.settings.theme);
 
-  messages = [];
-  pendingAttachments = [];
+    // Apply settings to UI
+    dom.switchEnter.classList.toggle('on', state.settings.enterToSend);
+    dom.switchEnter.setAttribute('aria-checked', String(state.settings.enterToSend));
+    dom.switchVoiceMode.classList.toggle('on', state.settings.voiceMode);
+    dom.switchVoiceMode.setAttribute('aria-checked', String(state.settings.voiceMode));
 
-  messageInput.value = "";
+    // Ensure a conversation exists
+    if (!state.conversations.length) {
+      createConversation();
+    } else if (!state.currentId || !state.conversations.find(c => c.id === state.currentId)) {
+      state.currentId = state.conversations[0].id;
+      saveCurrent();
+    }
 
-  renderAttachmentPreview();
-  renderMessages();
+    setModel(state.model);
+    renderHistory();
+    renderMessages();
+    bindEvents();
+    updateSendState();
+    autoResize();
 
-  welcome.classList.remove("hidden");
+    // Prime speech voices
+    if (window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+    }
 
-  autoResize();
+    // Status
+    setStatus(navigator.onLine);
 
-  renderChatHistory();
+    // Decorate errors on every render
+    const _renderMessages = renderMessages;
+    renderMessages = function () { _renderMessages(); decorateErrorMessages(); };
 
-  closeSidebarMenu();
-
-  messageInput.focus();
-}
-
-function startEmptyChat() {
-
-  currentChatId = null;
-  messages = [];
-
-  renderMessages();
-
-  welcome.classList.remove("hidden");
-
-  renderChatHistory();
-}
-
-function clearAllChats() {
-
-  const confirmed =
-    confirm(
-      "Delete all saved chats?"
-    );
-
-  if (!confirmed) return;
-
-  localStorage.removeItem(
-    STORAGE_KEY
-  );
-
-  newChat();
-}
-
-/* =========================================================
-   SIDEBAR
-========================================================= */
-
-function openSidebar() {
-
-  sidebar.classList.add("open");
-  sidebarOverlay.classList.add("show");
-}
-
-function closeSidebarMenu() {
-
-  sidebar.classList.remove("open");
-  sidebarOverlay.classList.remove("show");
-}
-
-/* =========================================================
-   THEME
-========================================================= */
-
-function loadTheme() {
-
-  const theme =
-    localStorage.getItem(THEME_KEY);
-
-  if (theme === "light") {
-
-    document.body.classList.add("light");
-    themeIcon.textContent = "☀";
-
-  } else {
-
-    document.body.classList.remove("light");
-    themeIcon.textContent = "☾";
-  }
-}
-
-function toggleTheme() {
-
-  const light =
-    document.body.classList.toggle("light");
-
-  localStorage.setItem(
-    THEME_KEY,
-    light ? "light" : "dark"
-  );
-
-  themeIcon.textContent =
-    light ? "☀" : "☾";
-}
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-function escapeHTML(value) {
-
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function shortFileName(name) {
-
-  if (name.length <= 12) {
-    return name;
+    // Show a subtle welcome
+    setTimeout(() => toast('Welcome to AURA AI ✦', 'success'), 400);
   }
 
-  return name.slice(0, 9) + "...";
-}
-
-function formatBytes(bytes) {
-
-  if (!bytes) return "0 B";
-
-  const units =
-    ["B", "KB", "MB", "GB"];
-
-  const index =
-    Math.floor(
-      Math.log(bytes) /
-      Math.log(1024)
-    );
-
-  return (
-    (bytes /
-      Math.pow(1024, index))
-      .toFixed(index ? 1 : 0)
-    +
-    " " +
-    units[index]
-  );
-}
-
-function getFileEmoji(mime) {
-
-  if (!mime) return "📄";
-
-  if (mime.startsWith("audio/")) return "🎵";
-  if (mime.startsWith("video/")) return "🎬";
-  if (mime.startsWith("image/")) return "🖼️";
-
-  if (mime === "application/pdf") {
-    return "📕";
-  }
-
-  return "📄";
-  }
+  document.addEventListener('DOMContentLoaded', init);
+})();
