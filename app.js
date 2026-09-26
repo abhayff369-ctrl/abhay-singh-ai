@@ -13,7 +13,7 @@
     CURRENT: 'aura.current',
     SETTINGS: 'aura.settings'
   };
-  const MAX_FILE_SIZE = 8 * 1024 * 1024; // 8 MB
+  const MAX_FILE_SIZE = 8 * 1024 * 1024;
   const ACCEPTED_IMAGE = /^image\//;
   const ACCEPTED_DOC = /\.(pdf|txt|json|csv|md|log|js|ts|py|html|css|xml|yaml|yml)$/i;
 
@@ -24,17 +24,18 @@
     model: 'flash',
     isGenerating: false,
     abortController: null,
-    attachments: [], // { id, file, name, size, type, dataUrl? }
+    attachments: [],
     settings: {
       theme: 'dark',
       enterToSend: true,
       voiceMode: false
     },
+    // IME composition flag — prevents Enter from sending while typing Hindi/Japanese/Chinese
+    composing: false,
     mediaRecorder: null,
     recordedChunks: [],
     recordingStart: 0,
-    recordingTimer: null,
-    voiceModeActive: false
+    recordingTimer: null
   };
 
   // ---------- DOM ----------
@@ -65,7 +66,7 @@
     messages: $('#messages'),
     chatScroll: $('#chatScroll'),
 
-    composer: $('#composer'),
+    composer: $('#composer'),          // <form>
     composerInput: $('#composerInput'),
     sendBtn: $('#sendBtn'),
     attachBtn: $('#attachBtn'),
@@ -97,7 +98,7 @@
 
   // ---------- UTILS ----------
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  const escapeHtml = (s = '') => s.replace(/[&<>"']/g, c => ({
+  const escapeHtml = (s = '') => String(s).replace(/[&<>"']/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[c]));
   const formatBytes = (n) => {
@@ -171,54 +172,36 @@
     localStorage.setItem(STORAGE.THEME, mode);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = effective === 'dark' ? '#0a0a12' : '#f6f6fb';
-    // Update icon
     if (dom.themeIcon) {
       dom.themeIcon.innerHTML = effective === 'dark'
         ? '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
         : '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
     }
-    // Segmented
     $$('#themeSegmented button').forEach(b => b.classList.toggle('active', b.dataset.value === mode));
   }
 
-  // ---------- MARKDOWN (safe) ----------
+  // ---------- MARKDOWN ----------
   function renderMarkdown(src) {
     if (!src) return '';
     let text = String(src).replace(/\r\n/g, '\n');
-
-    // Extract code fences first
     const codeBlocks = [];
     text = text.replace(/```([\w+-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
       const idx = codeBlocks.length;
       codeBlocks.push({ lang: lang || 'code', code });
       return `\u0000CB${idx}\u0000`;
     });
-
-    // Escape
     text = escapeHtml(text);
-
-    // Headings
     text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
     text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
     text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-    // Blockquote
     text = text.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-
-    // Lists
     text = text.replace(/^\s*[-*] (.+)$/gm, '<li>$1</li>');
     text = text.replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, '<ul>$1</ul>');
-
-    // Bold / italic / inline code
     text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     text = text.replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, '$1<em>$2</em>');
     text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-
-    // Links
     text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
       '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-
-    // Paragraphs
     text = text.split(/\n{2,}/).map(block => {
       const t = block.trim();
       if (!t) return '';
@@ -226,15 +209,13 @@
       if (t.startsWith('\u0000CB')) return t;
       return `<p>${t.replace(/\n/g, '<br>')}</p>`;
     }).join('');
-
-    // Restore code blocks
     text = text.replace(/\u0000CB(\d+)\u0000/g, (_, i) => {
       const { lang, code } = codeBlocks[+i];
       const id = 'code-' + uid();
       return `<div class="code-wrap">
         <div class="code-head">
           <span>${escapeHtml(lang)}</span>
-          <button class="code-copy" data-code-id="${id}" aria-label="Copy code">
+          <button class="code-copy" type="button" data-code-id="${id}" aria-label="Copy code">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             Copy
           </button>
@@ -242,7 +223,6 @@
         <pre><code id="${id}">${escapeHtml(code)}</code></pre>
       </div>`;
     });
-
     return text;
   }
 
@@ -292,7 +272,6 @@
     renderHistory();
   }
   function startNewChat() {
-    // If current is empty, just focus
     const cur = getCurrent();
     if (cur && cur.messages.length === 0) {
       dom.composerInput.focus();
@@ -303,7 +282,7 @@
     renderMessages();
     dom.composerInput.value = '';
     autoResize();
-    updateSendState();
+    updateComposerState();
     dom.composerInput.focus();
     closeSidebar();
     toast('New chat started', 'success');
@@ -321,13 +300,11 @@
       dom.chatHistory.innerHTML = `<div class="hist-empty">${q ? 'No matching conversations' : 'No conversations yet'}</div>`;
       return;
     }
-
     const groups = {};
     convs.forEach(c => {
       const g = dateGroup(c.updatedAt);
       (groups[g] = groups[g] || []).push(c);
     });
-
     const order = ['Today', 'Yesterday', 'Previous 7 days', 'Older'];
     let html = '';
     order.forEach(label => {
@@ -339,7 +316,7 @@
         html += `<div class="hist-item${active}" data-id="${c.id}" role="button" tabindex="0" aria-label="Open conversation: ${title}">
           <svg class="hi-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="hi-title">${title}</span>
-          <button class="hi-menu" data-menu="${c.id}" aria-label="Options">
+          <button class="hi-menu" type="button" data-menu="${c.id}" aria-label="Options">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
           </button>
         </div>`;
@@ -353,18 +330,13 @@
   function renderMessages() {
     const conv = getCurrent();
     const has = conv && conv.messages.length > 0;
-
     dom.welcome.hidden = has;
     dom.messages.hidden = !has;
-
-    if (!has) {
-      dom.messages.innerHTML = '';
-      return;
-    }
+    if (!has) { dom.messages.innerHTML = ''; return; }
 
     dom.messages.innerHTML = conv.messages.map((m, i) => renderMessage(m, i)).join('');
+    decorateErrorMessages();
 
-    // Scroll to bottom on render
     requestAnimationFrame(() => {
       dom.chatScroll.scrollTop = dom.chatScroll.scrollHeight;
     });
@@ -387,25 +359,25 @@
 
     const actions = isUser
       ? `<div class="msg-actions">
-          <button class="msg-action" data-action="copy" data-idx="${idx}" aria-label="Copy">
+          <button class="msg-action" type="button" data-action="copy" data-idx="${idx}" aria-label="Copy">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             Copy
           </button>
-          <button class="msg-action" data-action="resend" data-idx="${idx}" aria-label="Edit and resend">
+          <button class="msg-action" type="button" data-action="resend" data-idx="${idx}" aria-label="Edit and resend">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>
             Edit
           </button>
         </div>`
       : `<div class="msg-actions">
-          <button class="msg-action" data-action="copy" data-idx="${idx}" aria-label="Copy">
+          <button class="msg-action" type="button" data-action="copy" data-idx="${idx}" aria-label="Copy">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             Copy
           </button>
-          <button class="msg-action" data-action="speak" data-idx="${idx}" aria-label="Speak">
+          <button class="msg-action" type="button" data-action="speak" data-idx="${idx}" aria-label="Speak">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
             Speak
           </button>
-          <button class="msg-action" data-action="regenerate" data-idx="${idx}" aria-label="Regenerate">
+          <button class="msg-action" type="button" data-action="regenerate" data-idx="${idx}" aria-label="Regenerate">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 18.36 5.64L23 10"/></svg>
             Regenerate
           </button>
@@ -432,36 +404,50 @@
     </div></div>`;
   }
 
-  // ---------- COMPOSER ----------
+  // ---------- COMPOSER STATE ----------
   function autoResize() {
     const ta = dom.composerInput;
     ta.style.height = 'auto';
     ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
   }
-  function updateSendState() {
+
+  // Single source of truth for the send button state.
+  // Called on: input, attachments change, isGenerating change, after send completes.
+  function updateComposerState() {
     const hasText = dom.composerInput.value.trim().length > 0;
-    const hasFiles = state.attachments.length > 0;
-    const enabled = (hasText || hasFiles) && !state.isGenerating;
-    dom.sendBtn.disabled = !enabled;
-    dom.sendBtn.classList.toggle('generating', state.isGenerating);
+    const hasAttachments = state.attachments.length > 0;
+    const canSend = (hasText || hasAttachments) && !state.isGenerating;
+
+    dom.sendBtn.disabled = !canSend && !state.isGenerating;
+    // When generating, the button becomes the STOP button (never disabled)
+    if (state.isGenerating) {
+      dom.sendBtn.disabled = false;
+      dom.sendBtn.classList.add('generating');
+      dom.sendBtn.setAttribute('aria-label', 'Stop generating');
+      dom.sendBtn.setAttribute('title', 'Stop generating');
+    } else {
+      dom.sendBtn.classList.remove('generating');
+      dom.sendBtn.setAttribute('aria-label', 'Send message');
+      dom.sendBtn.setAttribute('title', 'Send message');
+    }
+
     const count = dom.composerInput.value.length;
     dom.charCounter.textContent = count > 3500 ? `${count} / 12000` : '';
   }
 
   // ---------- ATTACHMENTS ----------
   function addAttachments(files) {
-    const accept = [];
+    const added = [];
     for (const f of files) {
       if (f.size > MAX_FILE_SIZE) { toast(`${f.name} is too large (max ${formatBytes(MAX_FILE_SIZE)})`, 'error'); continue; }
       const isImage = ACCEPTED_IMAGE.test(f.type);
       const isDoc = ACCEPTED_DOC.test(f.name) || f.type === 'application/pdf';
       if (!isImage && !isDoc) { toast(`${f.name}: unsupported file type`, 'error'); continue; }
-      const att = { id: uid(), file: f, name: f.name, size: f.size, type: f.type, kind: isImage ? 'image' : 'file' };
-      accept.push(att);
+      added.push({ id: uid(), file: f, name: f.name, size: f.size, type: f.type, kind: isImage ? 'image' : 'file' });
     }
-    state.attachments.push(...accept);
+    state.attachments.push(...added);
     renderAttachments();
-    updateSendState();
+    updateComposerState();
   }
 
   function renderAttachments() {
@@ -472,16 +458,14 @@
     }
     dom.attachments.hidden = false;
     dom.attachments.innerHTML = state.attachments.map(a => {
-      const preview = a.kind === 'image' && a.dataUrl
-        ? `<img src="${a.dataUrl}" alt="" />`
-        : '';
+      const preview = a.kind === 'image' && a.dataUrl ? `<img src="${a.dataUrl}" alt="" />` : '';
       return `<div class="attach-chip" data-id="${a.id}">
         ${preview}
         <div class="attach-chip-info">
           <div class="attach-chip-name">${escapeHtml(a.name)}</div>
           <div class="attach-chip-size">${formatBytes(a.size)}</div>
         </div>
-        <button class="attach-chip-remove" data-remove="${a.id}" aria-label="Remove attachment">
+        <button class="attach-chip-remove" type="button" data-remove="${a.id}" aria-label="Remove attachment">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>`;
@@ -497,60 +481,55 @@
     });
   }
 
-  async function hydrateAttachmentPreviews() {
-    for (const a of state.attachments) {
-      if (a.kind === 'image' && !a.dataUrl) {
-        try { a.dataUrl = await readAsDataUrl(a.file); } catch {}
-      }
-    }
+  async function addAttachmentsAndPreview(files) {
+    const before = state.attachments.length;
+    addAttachments(files);
+    const newly = state.attachments.slice(before);
+    await Promise.all(newly.filter(a => a.kind === 'image').map(async a => {
+      try { a.dataUrl = await readAsDataUrl(a.file); } catch {}
+    }));
     renderAttachments();
   }
 
-  // ---------- SEND ----------
+  // ---------- SEND (single canonical path) ----------
   async function sendMessage() {
+    // Hard guards — prevents double-submit and empty sends
     if (state.isGenerating) return;
     const text = dom.composerInput.value.trim();
     if (!text && state.attachments.length === 0) return;
 
     const conv = getCurrent() || createConversation();
 
-    // Snapshot attachments (dataUrl included for images so messages can display them)
     const atts = state.attachments.map(a => ({
-      id: a.id,
-      name: a.name,
-      size: a.size,
-      type: a.type,
-      kind: a.kind,
-      dataUrl: a.dataUrl || null
+      id: a.id, name: a.name, size: a.size, type: a.type, kind: a.kind, dataUrl: a.dataUrl || null
     }));
 
-    // Push user message
-    const userMsg = {
+    // Push user message to model
+    conv.messages.push({
       role: 'user',
       content: text,
       timestamp: Date.now(),
       attachments: atts
-    };
-    conv.messages.push(userMsg);
+    });
     if (conv.messages.filter(m => m.role === 'user').length === 1) {
       conv.title = (text || atts[0]?.name || 'New chat').slice(0, 60);
     }
     conv.updatedAt = Date.now();
     saveChats();
 
-    // Reset composer
+    // Clear composer NOW (so user can't re-send the same text)
     dom.composerInput.value = '';
     state.attachments = [];
     renderAttachments();
     autoResize();
-    updateSendState();
+    updateComposerState();
 
+    // Render user message + show thinking
     renderMessages();
     renderHistory();
 
-    // Show thinking
     state.isGenerating = true;
-    updateSendState();
+    updateComposerState();
     showThinking();
 
     const history = conv.messages.slice(0, -1).map(m => ({
@@ -579,7 +558,7 @@
 
       if (!res.ok || !data || data.success === false) {
         const errText = (data && (data.error || data.message)) ||
-          `Request failed (${res.status} ${res.statusText || ''})`.trim();
+          `Request failed (${res.status}${res.statusText ? ' ' + res.statusText : ''})`;
         pushAssistantError(conv, errText);
       } else {
         const reply = data.message || data.reply || data.content || '';
@@ -596,7 +575,6 @@
           saveChats();
           renderMessages();
           renderHistory();
-
           if (state.settings.voiceMode) speak(reply);
         }
       }
@@ -616,7 +594,7 @@
     } finally {
       state.isGenerating = false;
       state.abortController = null;
-      updateSendState();
+      updateComposerState();
       dom.composerInput.focus();
     }
   }
@@ -653,9 +631,7 @@
     document.getElementById('thinkingMsg')?.remove();
   }
 
-  // Show errors beautifully instead of blank bubbles
   function decorateErrorMessages() {
-    // Post-process: convert error messages to error card markup
     $$('.msg.assistant').forEach(el => {
       const idx = +el.dataset.idx;
       const conv = getCurrent();
@@ -670,7 +646,7 @@
           <div>
             <div class="error-card-title">AURA AI couldn't complete that request.</div>
             <div class="error-card-desc">${escapeHtml(m.content)}</div>
-            <button class="retry-btn" data-retry="${idx}">Try again</button>
+            <button class="retry-btn" type="button" data-retry="${idx}">Try again</button>
           </div>
         </div>`;
     });
@@ -736,32 +712,27 @@
     if (!chunks.length) return;
     const blob = new Blob(chunks, { type: 'audio/webm' });
     const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
-    const att = { id: uid(), file, name: file.name, size: file.size, type: file.type, kind: 'file' };
-    state.attachments.push(att);
+    state.attachments.push({ id: uid(), file, name: file.name, size: file.size, type: file.type, kind: 'file' });
     renderAttachments();
-    updateSendState();
+    updateComposerState();
     toast('Voice note attached', 'success');
   }
 
-  // ---------- VOICE (speech synthesis) ----------
+  // ---------- VOICE (synthesis) ----------
   function pickVoice(text) {
     const voices = window.speechSynthesis?.getVoices() || [];
     if (!voices.length) return null;
     const isHindi = /[\u0900-\u097F]/.test(text);
-    if (isHindi) {
-      return voices.find(v => /hi-IN/i.test(v.lang)) || voices.find(v => /hi/i.test(v.lang)) || null;
-    }
+    if (isHindi) return voices.find(v => /hi-IN/i.test(v.lang)) || voices.find(v => /hi/i.test(v.lang)) || null;
     return voices.find(v => /en-US/i.test(v.lang)) || voices.find(v => /en-GB/i.test(v.lang)) ||
       voices.find(v => /en/i.test(v.lang)) || voices[0];
   }
-
   function speak(text) {
     if (!window.speechSynthesis || !text) {
       toast('Speech playback is not supported in this browser.', 'warn');
       return;
     }
     window.speechSynthesis.cancel();
-    // Trim code blocks (speak only text-ish)
     const clean = String(text).replace(/```[\s\S]*?```/g, ' code block ').replace(/[*_`#>]/g, '');
     const u = new SpeechSynthesisUtterance(clean.slice(0, 4000));
     const v = pickVoice(clean);
@@ -787,7 +758,7 @@
     }
   }
 
-  // ---------- MODEL MENU ----------
+  // ---------- MODEL ----------
   function setModel(m) {
     state.model = m;
     const labels = { flash: 'AURA · Flash', pro: 'AURA · Pro', auto: 'AURA · Auto' };
@@ -814,13 +785,147 @@
     document.body.style.overflow = '';
   }
 
-  // ---------- EVENTS ----------
+  // ---------- LIGHTBOX ----------
+  function openLightbox(src) {
+    dom.lightboxImg.src = src;
+    dom.lightbox.hidden = false;
+    dom.lightbox.style.display = 'flex';
+  }
+  function closeLightbox() {
+    dom.lightbox.hidden = true;
+    dom.lightbox.style.display = '';
+    dom.lightboxImg.src = '';
+  }
+
+  // ---------- REGENERATE ----------
+  async function regenerateFrom(idx) {
+    const conv = getCurrent();
+    if (!conv || state.isGenerating) return;
+    const target = conv.messages[idx];
+    if (!target) return;
+    conv.messages = conv.messages.slice(0, idx);
+    saveChats();
+    renderMessages();
+
+    const lastUser = [...conv.messages].reverse().find(m => m.role === 'user');
+    if (!lastUser) return;
+
+    dom.composerInput.value = lastUser.content || '';
+    autoResize(); updateComposerState();
+
+    // Remove last user so sendMessage doesn't duplicate
+    conv.messages = conv.messages.slice(0, -1);
+    saveChats();
+    renderMessages();
+    sendMessage();
+  }
+
+  // ---------- HISTORY CONTEXT MENU ----------
+  function openHistoryMenu(anchor, id) {
+    document.getElementById('ctxMenu')?.remove();
+    const menu = document.createElement('div');
+    menu.id = 'ctxMenu';
+    menu.style.cssText = `
+      position:fixed; z-index:500; background:var(--surface); border:1px solid var(--border);
+      border-radius:12px; box-shadow:var(--shadow-lg); padding:6px; min-width:170px;
+      animation: fadeUp .18s var(--ease);
+    `;
+    const conv = state.conversations.find(c => c.id === id);
+    menu.innerHTML = `
+      <button class="attach-item" type="button" data-act="rename">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>
+        Rename
+      </button>
+      <button class="attach-item" type="button" data-act="delete" style="color:var(--danger)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        Delete
+      </button>`;
+    document.body.appendChild(menu);
+    const r = anchor.getBoundingClientRect();
+    let top = r.bottom + 6, left = r.left;
+    if (left + 180 > window.innerWidth) left = window.innerWidth - 190;
+    if (top + 120 > window.innerHeight) top = r.top - 120;
+    menu.style.top = top + 'px';
+    menu.style.left = left + 'px';
+
+    menu.querySelector('[data-act="rename"]').addEventListener('click', () => {
+      menu.remove();
+      const next = prompt('Rename conversation:', conv?.title || '');
+      if (next != null && next.trim()) renameConversation(id, next.trim());
+    });
+    menu.querySelector('[data-act="delete"]').addEventListener('click', () => {
+      menu.remove();
+      if (confirm('Delete this conversation?')) deleteConversation(id);
+    });
+  }
+
+  // ---------- EVENT BINDINGS ----------
   function bindEvents() {
-    // Sidebar
+    // ============================================================
+    // THE FIX: the composer is a <form>. We attach ONE submit handler
+    // that calls preventDefault() and delegates to sendMessage().
+    // The send button is type="submit" so clicking it OR pressing
+    // Enter inside the textarea fires this same handler.
+    // ============================================================
+    dom.composer.addEventListener('submit', handleSubmit);
+
+    async function handleSubmit(event) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      // If generating, the send button becomes "stop"
+      if (state.isGenerating) {
+        state.abortController?.abort();
+        return;
+      }
+
+      const text = dom.composerInput.value.trim();
+      if (!text && state.attachments.length === 0) return;
+
+      await sendMessage();
+    }
+
+    // Also handle click on send button directly (belt-and-braces for
+    // browsers that don't fire submit from a disabled→enabled button,
+    // or when the button is clicked via keyboard in odd ways).
+    dom.sendBtn.addEventListener('click', (e) => {
+      // If the form submission already handled it, preventDefault on the
+      // button prevents a duplicate submit. We rely on the form's submit
+      // event for the actual action, so just prevent any default here.
+      e.preventDefault();
+      if (state.isGenerating) {
+        state.abortController?.abort();
+        return;
+      }
+      const text = dom.composerInput.value.trim();
+      if (!text && state.attachments.length === 0) return;
+      // Fire the same handler
+      handleSubmit(e);
+    });
+
+    // ----- Input events -----
+    dom.composerInput.addEventListener('input', () => {
+      autoResize();
+      updateComposerState();
+    });
+    dom.composerInput.addEventListener('compositionstart', () => { state.composing = true; });
+    dom.composerInput.addEventListener('compositionend', () => { state.composing = false; });
+
+    dom.composerInput.addEventListener('keydown', (e) => {
+      // Never send during IME composition (Hindi/Japanese/Chinese)
+      if (state.composing || e.isComposing || e.keyCode === 229) return;
+
+      if (e.key === 'Enter' && !e.shiftKey && state.settings.enterToSend) {
+        e.preventDefault();
+        // Trigger submit on the form
+        dom.composer.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }
+    });
+
+    // ----- Sidebar -----
     dom.menuBtn.addEventListener('click', openSidebar);
     dom.sidebarClose.addEventListener('click', closeSidebar);
     dom.backdrop.addEventListener('click', closeSidebar);
-
     dom.newChatBtn.addEventListener('click', startNewChat);
     dom.headerNewChat.addEventListener('click', startNewChat);
 
@@ -836,14 +941,9 @@
       dom.searchInput.focus();
     });
 
-    // History: delegate
     dom.chatHistory.addEventListener('click', (e) => {
       const menuBtn = e.target.closest('.hi-menu');
-      if (menuBtn) {
-        e.stopPropagation();
-        openHistoryMenu(menuBtn, menuBtn.dataset.menu);
-        return;
-      }
+      if (menuBtn) { e.stopPropagation(); openHistoryMenu(menuBtn, menuBtn.dataset.menu); return; }
       const item = e.target.closest('.hist-item');
       if (item) switchTo(item.dataset.id);
     });
@@ -853,7 +953,7 @@
       if (item) { e.preventDefault(); switchTo(item.dataset.id); }
     });
 
-    // Settings / theme / clear
+    // ----- Settings / theme / clear -----
     dom.settingsBtn.addEventListener('click', openSettings);
     dom.settingsClose.addEventListener('click', closeSettings);
     dom.settingsModal.addEventListener('click', (e) => {
@@ -876,7 +976,7 @@
       }
     });
 
-    // Model menu
+    // ----- Model -----
     dom.modelBadge.addEventListener('click', (e) => {
       e.stopPropagation();
       const open = dom.modelMenu.classList.toggle('open');
@@ -884,23 +984,7 @@
     });
     $$('.model-item').forEach(it => it.addEventListener('click', () => setModel(it.dataset.model)));
 
-    // Composer
-    dom.composerInput.addEventListener('input', () => { autoResize(); updateSendState(); });
-    dom.composerInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && state.settings.enterToSend && !e.isComposing) {
-        e.preventDefault();
-        if (!dom.sendBtn.disabled) sendMessage();
-      }
-    });
-    dom.sendBtn.addEventListener('click', () => {
-      if (state.isGenerating) {
-        state.abortController?.abort();
-        return;
-      }
-      sendMessage();
-    });
-
-    // Attach
+    // ----- Attach -----
     dom.attachBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const open = dom.attachMenu.classList.toggle('open');
@@ -928,15 +1012,15 @@
       if (!rm) return;
       state.attachments = state.attachments.filter(a => a.id !== rm.dataset.remove);
       renderAttachments();
-      updateSendState();
+      updateComposerState();
     });
 
-    // Mic
+    // ----- Mic -----
     dom.micBtn.addEventListener('click', toggleRecording);
     dom.recordingCancel.addEventListener('click', cancelRecording);
     dom.recordingSend.addEventListener('click', sendRecording);
 
-    // Message actions: delegate
+    // ----- Message actions (delegated) -----
     dom.messages.addEventListener('click', async (e) => {
       const codeBtn = e.target.closest('.code-copy');
       if (codeBtn) {
@@ -945,7 +1029,6 @@
           try {
             await navigator.clipboard.writeText(el.textContent);
             codeBtn.classList.add('copied');
-            codeBtn.querySelector('svg')?.insertAdjacentHTML('afterend', '');
             const orig = codeBtn.innerHTML;
             codeBtn.innerHTML = '✓ Copied';
             setTimeout(() => { codeBtn.classList.remove('copied'); codeBtn.innerHTML = orig; }, 1200);
@@ -958,11 +1041,7 @@
       if (lb) { openLightbox(lb.dataset.lightbox); return; }
 
       const retry = e.target.closest('[data-retry]');
-      if (retry) {
-        const idx = +retry.dataset.retry;
-        regenerateFrom(idx);
-        return;
-      }
+      if (retry) { regenerateFrom(+retry.dataset.retry); return; }
 
       const act = e.target.closest('.msg-action');
       if (!act) return;
@@ -981,17 +1060,17 @@
         regenerateFrom(idx);
       } else if (act.dataset.action === 'resend') {
         dom.composerInput.value = m.content || '';
-        autoResize(); updateSendState(); dom.composerInput.focus();
+        autoResize(); updateComposerState(); dom.composerInput.focus();
       }
     });
 
-    // Lightbox
+    // ----- Lightbox -----
     dom.lightboxClose.addEventListener('click', closeLightbox);
     dom.lightbox.addEventListener('click', (e) => {
       if (e.target === dom.lightbox) closeLightbox();
     });
 
-    // Settings controls
+    // ----- Settings controls -----
     $$('#themeSegmented button').forEach(b => b.addEventListener('click', () => {
       applyTheme(b.dataset.value);
       saveSettings();
@@ -1012,7 +1091,7 @@
       }
     });
 
-    // Global: outside clicks
+    // ----- Outside clicks -----
     document.addEventListener('click', (e) => {
       if (!e.target.closest('#modelBadge') && !e.target.closest('#modelMenu')) {
         dom.modelMenu.classList.remove('open');
@@ -1026,7 +1105,7 @@
       if (ctx && !e.target.closest('#ctxMenu')) ctx.remove();
     });
 
-    // Escape
+    // ----- Keyboard shortcuts -----
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         closeSidebar();
@@ -1037,12 +1116,10 @@
         document.getElementById('ctxMenu')?.remove();
         stopSpeaking();
       }
-      // ⌘K / Ctrl+K → new chat (like Google/Gemini)
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         startNewChat();
       }
-      // ⌘/ → focus search
       if ((e.metaKey || e.ctrlKey) && e.key === '/') {
         e.preventDefault();
         openSidebar();
@@ -1050,22 +1127,19 @@
       }
     });
 
-    // Enter on suggestions
+    // ----- Suggestions -----
     $$('.sugg').forEach(s => {
       s.addEventListener('click', () => {
-        const p = s.dataset.prompt || '';
-        dom.composerInput.value = p;
-        autoResize(); updateSendState();
+        dom.composerInput.value = s.dataset.prompt || '';
+        autoResize(); updateComposerState();
         dom.composerInput.focus();
       });
     });
 
-    // System theme listener
+    // ----- System theme & network -----
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
       if (state.settings.theme === 'system') applyTheme('system');
     });
-
-    // Online / offline
     window.addEventListener('online', () => setStatus(true));
     window.addEventListener('offline', () => setStatus(false));
   }
@@ -1073,17 +1147,6 @@
   function setStatus(online) {
     dom.statusPill.classList.toggle('offline', !online);
     dom.statusPill.querySelector('.status-text').textContent = online ? 'Online' : 'Offline';
-  }
-
-  async function addAttachmentsAndPreview(files) {
-    const before = state.attachments.length;
-    addAttachments(files);
-    // Read image previews for newly added
-    const added = state.attachments.slice(before);
-    await Promise.all(added.filter(a => a.kind === 'image').map(async a => {
-      try { a.dataUrl = await readAsDataUrl(a.file); } catch {}
-    }));
-    renderAttachments();
   }
 
   function toggleSwitch(el, key) {
@@ -1094,93 +1157,16 @@
     if (key === 'voiceMode' && !on) stopSpeaking();
   }
 
-  function openLightbox(src) {
-    dom.lightboxImg.src = src;
-    dom.lightbox.hidden = false;
-    dom.lightbox.style.display = 'flex';
-  }
-  function closeLightbox() {
-    dom.lightbox.hidden = true;
-    dom.lightbox.style.display = '';
-    dom.lightboxImg.src = '';
-  }
-
-  // ---------- HISTORY CONTEXT MENU ----------
-  function openHistoryMenu(anchor, id) {
-    document.getElementById('ctxMenu')?.remove();
-    const menu = document.createElement('div');
-    menu.id = 'ctxMenu';
-    menu.style.cssText = `
-      position:fixed; z-index:500; background:var(--surface); border:1px solid var(--border);
-      border-radius:12px; box-shadow:var(--shadow-lg); padding:6px; min-width:170px;
-      animation: fadeUp .18s var(--ease);
-    `;
-    const conv = state.conversations.find(c => c.id === id);
-    menu.innerHTML = `
-      <button class="attach-item" data-act="rename">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>
-        Rename
-      </button>
-      <button class="attach-item" data-act="delete" style="color:var(--danger)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        Delete
-      </button>`;
-    document.body.appendChild(menu);
-    const r = anchor.getBoundingClientRect();
-    let top = r.bottom + 6, left = r.left;
-    if (left + 180 > window.innerWidth) left = window.innerWidth - 190;
-    if (top + 120 > window.innerHeight) top = r.top - 120;
-    menu.style.top = top + 'px';
-    menu.style.left = left + 'px';
-
-    menu.querySelector('[data-act="rename"]').addEventListener('click', () => {
-      menu.remove();
-      const next = prompt('Rename conversation:', conv?.title || '');
-      if (next != null && next.trim()) renameConversation(id, next.trim());
-    });
-    menu.querySelector('[data-act="delete"]').addEventListener('click', () => {
-      menu.remove();
-      if (confirm('Delete this conversation?')) deleteConversation(id);
-    });
-  }
-
-  // ---------- REGENERATE ----------
-  async function regenerateFrom(idx) {
-    const conv = getCurrent();
-    if (!conv || state.isGenerating) return;
-    // Trim from idx
-    const target = conv.messages[idx];
-    if (!target) return;
-    conv.messages = conv.messages.slice(0, idx);
-    saveChats();
-    renderMessages();
-
-    // Find last user
-    const lastUser = [...conv.messages].reverse().find(m => m.role === 'user');
-    if (!lastUser) return;
-
-    // Re-inject last user content into composer and send
-    dom.composerInput.value = lastUser.content || '';
-    autoResize(); updateSendState();
-    // Remove the last user message so sendMessage doesn't duplicate
-    conv.messages = conv.messages.slice(0, -1);
-    saveChats();
-    renderMessages();
-    sendMessage();
-  }
-
   // ---------- INIT ----------
   function init() {
     load();
     applyTheme(state.settings.theme);
 
-    // Apply settings to UI
     dom.switchEnter.classList.toggle('on', state.settings.enterToSend);
     dom.switchEnter.setAttribute('aria-checked', String(state.settings.enterToSend));
     dom.switchVoiceMode.classList.toggle('on', state.settings.voiceMode);
     dom.switchVoiceMode.setAttribute('aria-checked', String(state.settings.voiceMode));
 
-    // Ensure a conversation exists
     if (!state.conversations.length) {
       createConversation();
     } else if (!state.currentId || !state.conversations.find(c => c.id === state.currentId)) {
@@ -1192,23 +1178,16 @@
     renderHistory();
     renderMessages();
     bindEvents();
-    updateSendState();
     autoResize();
+    updateComposerState();     // ← critical: ensures sendBtn reflects current state on load
 
-    // Prime speech voices
+    // Prime voices
     if (window.speechSynthesis) {
       window.speechSynthesis.getVoices();
       window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
     }
 
-    // Status
     setStatus(navigator.onLine);
-
-    // Decorate errors on every render
-    const _renderMessages = renderMessages;
-    renderMessages = function () { _renderMessages(); decorateErrorMessages(); };
-
-    // Show a subtle welcome
     setTimeout(() => toast('Welcome to AURA AI ✦', 'success'), 400);
   }
 
