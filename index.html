@@ -2,454 +2,178 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-  >
-
-  <meta
-    name="description"
-    content="AURA AI — Premium AI Assistant"
-  >
-
-  <meta
-    name="theme-color"
-    content="#ffffff"
-    media="(prefers-color-scheme: light)"
-  >
-
-  <meta
-    name="theme-color"
-    content="#0b0b0d"
-    media="(prefers-color-scheme: dark)"
-  >
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0f">
+  <meta name="description" content="AURA AI — Premium AI Assistant">
   <title>AURA AI</title>
 
   <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
 </head>
 
 <body>
-
   <div class="app">
 
-    <!-- =========================
-         SIDEBAR
-         ========================= -->
-
-    <aside
-      id="sidebar"
-      class="sidebar"
-    >
-
-      <div class="sidebar-header">
-
-        <div class="brand">
-
-          <div class="brand-logo">
-            A
-          </div>
-
-          <div class="brand-text">
-            <strong>AURA AI</strong>
-            <span>AI Assistant</span>
-          </div>
-
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-logo">A</div>
+        <div>
+          <strong>AURA AI</strong>
+          <span>AI Assistant</span>
         </div>
-
       </div>
 
-
-      <button
-        id="newChatBtn"
-        class="new-chat-btn"
-        type="button"
-      >
-        <svg viewBox="0 0 24 24">
-          <path d="M12 5v14"></path>
-          <path d="M5 12h14"></path>
-        </svg>
-
-        <span>New Chat</span>
+      <button class="new-chat" id="newChatBtn">
+        <span class="plus">+</span>
+        <span>New chat</span>
       </button>
 
-
-      <!-- Appearance -->
-
-      <div class="appearance">
-
-        <div class="section-title">
-          Appearance
-        </div>
-
-        <div class="theme-buttons">
-
-          <button
-            id="lightThemeBtn"
-            class="theme-btn"
-            type="button"
-          >
-            <span>☀️</span>
-            <span>Light</span>
-          </button>
-
-          <button
-            id="darkThemeBtn"
-            class="theme-btn"
-            type="button"
-          >
-            <span>🌙</span>
-            <span>Dark</span>
-          </button>
-
-        </div>
-
+      <div class="search-box">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="6.5"></circle>
+          <path d="m16 16 5 5"></path>
+        </svg>
+        <input id="searchInput" type="search" placeholder="Search chats">
       </div>
 
+      <div class="history" id="history"></div>
 
-      <!-- History -->
+      <div class="sidebar-bottom">
+        <button class="side-btn" id="themeBtn">
+          <span>◐</span>
+          <span>Theme</span>
+        </button>
 
-      <div class="history">
-
-        <div class="section-title">
-          Chat History
-        </div>
-
-        <div
-          id="historyList"
-          class="history-list"
-        ></div>
-
-      </div>
-
-
-      <div class="sidebar-footer">
+        <button class="side-btn" id="clearBtn">
+          <span>⌫</span>
+          <span>Clear chats</span>
+        </button>
 
         <div class="developer">
-          Developer: Abhay Singh
+          <span>Developer</span>
+          <strong>Abhay Singh</strong>
         </div>
-
-        <div class="version">
-          AURA AI
-        </div>
-
       </div>
-
     </aside>
-
-
-    <!-- Mobile overlay -->
-
-    <div
-      id="overlay"
-      class="overlay"
-    ></div>
-
-
-    <!-- =========================
-         MAIN
-         ========================= -->
 
     <main class="main">
 
-      <!-- HEADER -->
-
       <header class="topbar">
+        <button class="icon-btn mobile-only" id="menuBtn" aria-label="Open menu">
+          ☰
+        </button>
 
-        <div class="topbar-left">
-
-          <!-- Three line menu -->
-
-          <button
-            id="menuBtn"
-            class="menu-btn"
-            type="button"
-            aria-label="Open menu"
-            title="Menu"
-          >
-
-            <svg viewBox="0 0 24 24">
-              <path d="M4 6h16"></path>
-              <path d="M4 12h16"></path>
-              <path d="M4 18h16"></path>
-            </svg>
-
-          </button>
-
-
-          <div class="top-brand">
-
-            <strong>
-              AURA AI
-            </strong>
-
-            <span class="online-status">
-              <span class="online-dot"></span>
-              Online
-            </span>
-
-          </div>
-
+        <div class="top-title">
+          <strong>AURA AI</strong>
+          <span id="statusText">Online</span>
         </div>
 
-
-        <!-- Right side New Chat -->
-
-        <div class="topbar-actions">
-
-          <button
-            id="headerNewChat"
-            class="icon-btn"
-            type="button"
-            aria-label="New Chat"
-            title="New Chat"
-          >
-
-            <svg viewBox="0 0 24 24">
-              <path d="M12 5v14"></path>
-              <path d="M5 12h14"></path>
-            </svg>
-
-          </button>
-
-        </div>
-
+        <button class="new-top-btn" id="topNewChat">
+          + New chat
+        </button>
       </header>
 
+      <section class="chat-area" id="chatArea">
 
-      <!-- =========================
-           CHAT AREA
-           ========================= -->
-
-      <section
-        id="chat"
-        class="chat"
-        aria-live="polite"
-      >
-
-        <div
-          id="chatInner"
-          class="chat-inner"
-        >
-
-          <!-- Welcome -->
-
-          <div
-            id="welcome"
-            class="welcome"
-          >
-
-            <div class="welcome-logo">
-              A
-            </div>
-
-            <h1>
-              How can I help you?
-            </h1>
-
-            <p>
-              Welcome to AURA AI. Ask anything, write code,
-              analyze ideas, summarize content, or get help
-              with your work.
-            </p>
-
-
-            <div class="suggestions">
-
-              <button
-                class="suggestion"
-                type="button"
-                data-prompt="Explain this topic in simple language"
-              >
-                <span class="suggestion-icon">✦</span>
-                <span>Explain something simply</span>
-              </button>
-
-
-              <button
-                class="suggestion"
-                type="button"
-                data-prompt="Write a professional message for me"
-              >
-                <span class="suggestion-icon">✎</span>
-                <span>Write a professional message</span>
-              </button>
-
-
-              <button
-                class="suggestion"
-                type="button"
-                data-prompt="Help me write clean and working code"
-              >
-                <span class="suggestion-icon">&lt;/&gt;</span>
-                <span>Help with coding</span>
-              </button>
-
-
-              <button
-                class="suggestion"
-                type="button"
-                data-prompt="Give me some creative ideas"
-              >
-                <span class="suggestion-icon">✧</span>
-                <span>Give me creative ideas</span>
-              </button>
-
-            </div>
-
+        <div class="welcome" id="welcome">
+          <div class="aura-orb">
+            <div class="orb-core">A</div>
           </div>
 
+          <h1>How can I help you?</h1>
+          <p>Ask anything, write code, analyze files, or explore an idea.</p>
+
+          <div class="suggestions">
+            <button data-prompt="Explain quantum computing in simple words.">
+              <span>✦</span>
+              Explain something
+            </button>
+
+            <button data-prompt="Write a professional website landing page.">
+              <span>⌘</span>
+              Write code
+            </button>
+
+            <button data-prompt="Give me 5 creative project ideas.">
+              <span>✧</span>
+              Brainstorm ideas
+            </button>
+
+            <button data-prompt="Help me make a study plan.">
+              <span>◌</span>
+              Make a plan
+            </button>
+          </div>
         </div>
+
+        <div class="messages" id="messages"></div>
 
       </section>
 
-
-      <!-- =========================
-           COMPOSER
-           ========================= -->
-
       <div class="composer-wrap">
 
-        <form
-          id="composer"
-          class="composer"
-        >
+        <div class="attachment-preview" id="attachmentPreview"></div>
 
-          <!-- Attachments -->
-
-          <div
-            id="attachments"
-            class="attachments"
-          ></div>
-
-
-          <!-- Text -->
+        <form class="composer" id="composer">
 
           <textarea
             id="messageInput"
-            name="message"
             rows="1"
-            maxlength="20000"
+            autocomplete="off"
             placeholder="Message AURA AI..."
             aria-label="Message AURA AI"
-            autocomplete="off"
-            spellcheck="true"
           ></textarea>
 
-
-          <!-- Bottom controls -->
-
-          <div class="composer-tools">
+          <div class="composer-bottom">
 
             <div class="composer-left">
-
-              <!-- Attachment -->
-
-              <button
-                id="attachBtn"
-                class="tool-btn"
-                type="button"
-                aria-label="Attach file"
-                title="Attach file"
-              >
-
-                <svg viewBox="0 0 24 24">
-                  <path
-                    d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.49-8.48"
-                  ></path>
+              <label class="attach-btn" title="Attach files">
+                <input id="fileInput" type="file" multiple
+                  accept="image/*,.pdf,.txt,.json,.csv,.md,.doc,.docx,.audio/*,.video/*">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m20.5 11.5-7.8 7.8a5 5 0 0 1-7.1-7.1l8.3-8.3a3.5 3.5 0 0 1 5 5l-8.4 8.4a2 2 0 0 1-2.8-2.8l7.6-7.6"></path>
                 </svg>
+              </label>
 
-              </button>
-
-
-              <input
-                id="fileInput"
-                type="file"
-                multiple
-                hidden
-                accept="image/*,.pdf,.txt,.csv,.json,.md,.doc,.docx,.xls,.xlsx"
-              >
-
-
-              <!-- Microphone -->
-
-              <button
-                id="voiceBtn"
-                class="tool-btn"
-                type="button"
-                aria-label="Voice input"
-                title="Voice input"
-              >
-
-                <svg viewBox="0 0 24 24">
-                  <rect
-                    x="9"
-                    y="3"
-                    width="6"
-                    height="12"
-                    rx="3"
-                  ></rect>
-
-                  <path
-                    d="M5 11a7 7 0 0 0 14 0"
-                  ></path>
-
-                  <path
-                    d="M12 18v3"
-                  ></path>
-
-                  <path
-                    d="M8 21h8"
-                  ></path>
+              <button type="button" class="tool-btn" id="voiceBtn" title="Voice message">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="9" y="3" width="6" height="11" rx="3"></rect>
+                  <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6"></path>
                 </svg>
-
               </button>
-
             </div>
 
-
             <div class="composer-right">
-
-              <!-- Send -->
-
               <button
-                id="sendBtn"
-                class="send-btn"
                 type="submit"
+                class="send-btn"
+                id="sendBtn"
+                disabled
                 aria-label="Send message"
                 title="Send message"
               >
-
-                <svg
-                  class="send-icon"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M22 2 11 13"></path>
-                  <path d="m22 2-7 20-4-9-9-4Z"></path>
+                <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4.5 4.5 20 12 4.5 19.5 7 13l7-1-7-1z"></path>
                 </svg>
 
+                <svg class="stop-icon hidden" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="7" y="7" width="10" height="10" rx="2"></rect>
+                </svg>
               </button>
-
             </div>
 
           </div>
-
         </form>
 
-
-        <div class="disclaimer">
+        <div class="composer-note">
           AURA AI can make mistakes. Check important information.
         </div>
 
       </div>
 
     </main>
-
   </div>
 
-
-  <script src="/app.js" defer></script>
-
+  <div class="toast" id="toast"></div>
 </body>
 </html>
