@@ -1,629 +1,89 @@
 "use strict";
 
-/* =========================================================
-   AURA AI - FRONTEND
-========================================================= */
-
 const $ = (selector) => document.querySelector(selector);
 
-const welcome = $("#welcome");
-const messagesEl = $("#messages");
-const typingRow = $("#typingRow");
-
 const messageInput = $("#messageInput");
+const composer = $("#composer");
 const sendBtn = $("#sendBtn");
-const stopBtn = $("#stopBtn");
-
-const attachBtn = $("#attachBtn");
+const messages = $("#messages");
+const welcome = $("#welcome");
 const fileInput = $("#fileInput");
-
-const micBtn = $("#micBtn");
-
 const attachmentPreview = $("#attachmentPreview");
-
-const sidebar = $("#sidebar");
-const sidebarOverlay = $("#sidebarOverlay");
-
-const chatHistory = $("#chatHistory");
-const chatSearch = $("#chatSearch");
-
+const historyEl = $("#history");
+const searchInput = $("#searchInput");
 const newChatBtn = $("#newChatBtn");
 const topNewChat = $("#topNewChat");
-
-const menuBtn = $("#menuBtn");
-const closeSidebar = $("#closeSidebar");
-
 const themeBtn = $("#themeBtn");
-const themeIcon = $("#themeIcon");
+const clearBtn = $("#clearBtn");
+const menuBtn = $("#menuBtn");
+const sidebar = $("#sidebar");
+const voiceBtn = $("#voiceBtn");
+const toastEl = $("#toast");
 
-const clearChatsBtn = $("#clearChatsBtn");
-
-const voiceModeBtn = $("#voiceModeBtn");
-
-/* =========================================================
-   STATE
-========================================================= */
-
-let messages = [];
-let pendingAttachments = [];
-
+let chats = loadChats();
 let currentChatId = null;
-
+let attachments = [];
 let controller = null;
-
+let generating = false;
+let composing = false;
 let mediaRecorder = null;
 let audioChunks = [];
-let mediaStream = null;
 
-let voiceMode = false;
-
-const MAX_FILE_SIZE = 8 * 1024 * 1024;
-const MAX_TOTAL_SIZE = 12 * 1024 * 1024;
-const MAX_ATTACHMENTS = 5;
-
-const STORAGE_KEY = "aura_ai_chats_v1";
-const THEME_KEY = "aura_ai_theme";
-
-/* =========================================================
-   INIT
-========================================================= */
-
-document.addEventListener("DOMContentLoaded", () => {
-  loadTheme();
-  loadChats();
-  setupEvents();
-  autoResize();
-});
-
-/* =========================================================
-   EVENTS
-========================================================= */
-
-function setupEvents() {
-
-  messageInput.addEventListener("input", autoResize);
-
-  messageInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      sendMessage();
-    }
-  });
-
-  sendBtn.addEventListener("click", sendMessage);
-
-  stopBtn.addEventListener("click", stopGeneration);
-
-  attachBtn.addEventListener("click", () => {
-    fileInput.click();
-  });
-
-  fileInput.addEventListener("change", async (event) => {
-    await handleFiles([...event.target.files]);
-    fileInput.value = "";
-  });
-
-  micBtn.addEventListener("click", toggleRecording);
-
-  newChatBtn.addEventListener("click", newChat);
-  topNewChat.addEventListener("click", newChat);
-
-  menuBtn.addEventListener("click", openSidebar);
-  closeSidebar.addEventListener("click", closeSidebarMenu);
-  sidebarOverlay.addEventListener("click", closeSidebarMenu);
-
-  themeBtn.addEventListener("click", toggleTheme);
-
-  clearChatsBtn.addEventListener("click", clearAllChats);
-
-  chatSearch.addEventListener("input", renderChatHistory);
-
-  voiceModeBtn.addEventListener("click", toggleVoiceMode);
-
-  document.querySelectorAll(".suggestion").forEach((button) => {
-    button.addEventListener("click", () => {
-      messageInput.value = button.dataset.prompt || "";
-      autoResize();
-      messageInput.focus();
-    });
-  });
-}
-
-/* =========================================================
-   TEXTAREA
-========================================================= */
-
-function autoResize() {
-  messageInput.style.height = "auto";
-
-  const height = Math.min(
-    messageInput.scrollHeight,
-    160
-  );
-
-  messageInput.style.height = `${height}px`;
-}
-
-/* =========================================================
-   FILE HANDLING
-========================================================= */
-
-async function handleFiles(files) {
-
-  if (!files.length) return;
-
-  if (pendingAttachments.length + files.length > MAX_ATTACHMENTS) {
-    alert(`Maximum ${MAX_ATTACHMENTS} attachments allowed.`);
-    return;
+function loadChats() {
+  try {
+    return JSON.parse(localStorage.getItem("aura_chats") || "[]");
+  } catch {
+    return [];
   }
-
-  let totalSize =
-    pendingAttachments.reduce(
-      (sum, item) => sum + item.size,
-      0
-    );
-
-  for (const file of files) {
-
-    if (file.size > MAX_FILE_SIZE) {
-      alert(
-        `${file.name} is too large.\nMaximum size is 8 MB per file.`
-      );
-      continue;
-    }
-
-    totalSize += file.size;
-
-    if (totalSize > MAX_TOTAL_SIZE) {
-      alert("Total attachment size cannot exceed 12 MB.");
-      break;
-    }
-
-    const dataUrl = await readFileAsDataURL(file);
-
-    pendingAttachments.push({
-      id: crypto.randomUUID(),
-      name: file.name,
-      mimeType: file.type || "application/octet-stream",
-      size: file.size,
-      dataUrl
-    });
-  }
-
-  renderAttachmentPreview();
 }
 
-function readFileAsDataURL(file) {
-  return new Promise((resolve, reject) => {
-
-    const reader = new FileReader();
-
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-
-    reader.readAsDataURL(file);
-  });
+function saveChats() {
+  localStorage.setItem("aura_chats", JSON.stringify(chats));
 }
 
-function renderAttachmentPreview() {
-
-  attachmentPreview.innerHTML = "";
-
-  if (!pendingAttachments.length) {
-    attachmentPreview.classList.add("hidden");
-    return;
-  }
-
-  attachmentPreview.classList.remove("hidden");
-
-  pendingAttachments.forEach((file) => {
-
-    const chip = document.createElement("div");
-    chip.className = "attachment-chip";
-
-    if (file.mimeType.startsWith("image/")) {
-
-      const img = document.createElement("img");
-      img.src = file.dataUrl;
-      img.alt = file.name;
-
-      chip.appendChild(img);
-
-    } else {
-
-      const div = document.createElement("div");
-      div.className = "file-mini";
-
-      div.innerHTML = `
-        <div style="font-size:22px">📄</div>
-        <div>${escapeHTML(shortFileName(file.name))}</div>
-      `;
-
-      chip.appendChild(div);
-    }
-
-    const remove = document.createElement("button");
-
-    remove.className = "remove-attachment";
-    remove.textContent = "×";
-
-    remove.addEventListener("click", () => {
-
-      pendingAttachments =
-        pendingAttachments.filter(
-          item => item.id !== file.id
-        );
-
-      renderAttachmentPreview();
-    });
-
-    chip.appendChild(remove);
-
-    attachmentPreview.appendChild(chip);
-  });
-}
-
-/* =========================================================
-   SEND MESSAGE
-========================================================= */
-
-async function sendMessage(customText = null) {
-
-  if (controller) return;
-
-  const text =
-    customText !== null
-      ? customText.trim()
-      : messageInput.value.trim();
-
-  if (!text && !pendingAttachments.length) {
-    messageInput.focus();
-    return;
-  }
-
-  const attachments = pendingAttachments.map(item => ({
-    id: item.id,
-    name: item.name,
-    mimeType: item.mimeType,
-    size: item.size,
-    dataUrl: item.dataUrl
-  }));
-
-  const userMessage = {
+function createChat() {
+  return {
     id: crypto.randomUUID(),
-    role: "user",
-    text: text || "Please analyze the attached file.",
-    attachments: attachments.map(file => ({
-      id: file.id,
-      name: file.name,
-      mimeType: file.mimeType,
-      size: file.size,
-      dataUrl: file.dataUrl
-    })),
+    title: "New chat",
+    messages: [],
     createdAt: Date.now()
   };
-
-  messages.push(userMessage);
-
-  renderMessages();
-  saveCurrentChat();
-
-  messageInput.value = "";
-  autoResize();
-
-  pendingAttachments = [];
-  renderAttachmentPreview();
-
-  welcome.classList.add("hidden");
-
-  showTyping();
-
-  controller = new AbortController();
-
-  sendBtn.classList.add("hidden");
-  stopBtn.classList.remove("hidden");
-
-  try {
-
-    const history = messages
-      .slice(0, -1)
-      .slice(-20)
-      .map(message => ({
-        role: message.role,
-        text: message.text
-      }));
-
-    const response = await fetch("/api/chat", {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json"
-      },
-
-      body: JSON.stringify({
-        message: userMessage.text,
-        history,
-        attachments: attachments.map(file => ({
-          name: file.name,
-          mimeType: file.mimeType,
-          size: file.size,
-          data: file.dataUrl
-        }))
-      }),
-
-      signal: controller.signal
-    });
-
-    const data = await response.json().catch(() => ({
-      success: false,
-      error: "Invalid server response."
-    }));
-
-    if (!response.ok || !data.success) {
-
-      throw new Error(
-        data.error ||
-        `Request failed with status ${response.status}`
-      );
-    }
-
-    const assistantMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      text: data.text || "I couldn't generate a response.",
-      model: data.usedModel || null,
-      createdAt: Date.now()
-    };
-
-    messages.push(assistantMessage);
-
-    renderMessages();
-    saveCurrentChat();
-
-    if (voiceMode) {
-      speakText(assistantMessage.text);
-    }
-
-  } catch (error) {
-
-    if (error.name === "AbortError") {
-      hideTyping();
-      return;
-    }
-
-    console.error(error);
-
-    const errorMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      text:
-        `⚠️ ${error.message || "Something went wrong."}`,
-      isError: true,
-      createdAt: Date.now()
-    };
-
-    messages.push(errorMessage);
-
-    renderMessages();
-    saveCurrentChat();
-
-  } finally {
-
-    controller = null;
-
-    hideTyping();
-
-    sendBtn.classList.remove("hidden");
-    stopBtn.classList.add("hidden");
-  }
 }
 
-/* =========================================================
-   STOP
-========================================================= */
+function getCurrentChat() {
+  return chats.find((chat) => chat.id === currentChatId);
+}
 
-function stopGeneration() {
+function ensureChat() {
+  let chat = getCurrentChat();
 
-  if (controller) {
-    controller.abort();
-    controller = null;
+  if (!chat) {
+    chat = createChat();
+    chats.unshift(chat);
+    currentChatId = chat.id;
+    saveChats();
   }
 
-  hideTyping();
-
-  sendBtn.classList.remove("hidden");
-  stopBtn.classList.add("hidden");
+  return chat;
 }
 
-/* =========================================================
-   RENDER MESSAGES
-========================================================= */
-
-function renderMessages() {
-
-  messagesEl.innerHTML = "";
-
-  messages.forEach((message) => {
-
-    const row = document.createElement("div");
-
-    row.className =
-      `message-row ${message.role}`;
-
-    const avatar = document.createElement("div");
-
-    avatar.className =
-      `avatar ${
-        message.role === "assistant"
-          ? "assistant-avatar"
-          : ""
-      }`;
-
-    avatar.textContent =
-      message.role === "assistant"
-        ? "✦"
-        : "You";
-
-    const content = document.createElement("div");
-    content.className = "message-content";
-
-    const bubble = document.createElement("div");
-    bubble.className = "message-bubble";
-
-    if (message.role === "assistant") {
-
-      bubble.innerHTML =
-        renderMarkdown(message.text);
-
-    } else {
-
-      bubble.textContent = message.text;
-    }
-
-    content.appendChild(bubble);
-
-    if (
-      message.attachments &&
-      message.attachments.length
-    ) {
-      message.attachments.forEach(file => {
-        content.appendChild(
-          renderAttachmentCard(file)
-        );
-      });
-    }
-
-    if (message.role === "assistant") {
-
-      const actions =
-        document.createElement("div");
-
-      actions.className = "message-actions";
-
-      const copyBtn =
-        createActionButton("Copy", () => {
-          copyText(message.text);
-        });
-
-      const speakBtn =
-        createActionButton("🔊", () => {
-          speakText(message.text);
-        });
-
-      const regenBtn =
-        createActionButton("↻", () => {
-          regenerate(message.id);
-        });
-
-      actions.append(
-        copyBtn,
-        speakBtn,
-        regenBtn
-      );
-
-      content.appendChild(actions);
-    }
-
-    if (message.role === "user") {
-      row.append(content, avatar);
-    } else {
-      row.append(avatar, content);
-    }
-
-    messagesEl.appendChild(row);
-  });
-
-  requestAnimationFrame(() => {
-    const content = $(".content");
-
-    content.scrollTo({
-      top: content.scrollHeight,
-      behavior: "smooth"
-    });
-  });
+function escapeHTML(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-/* =========================================================
-   ATTACHMENT CARD
-========================================================= */
-
-function renderAttachmentCard(file) {
-
-  const card =
-    document.createElement("div");
-
-  card.className = "attachment-card";
-
-  if (
-    file.mimeType &&
-    file.mimeType.startsWith("image/") &&
-    file.dataUrl
-  ) {
-
-    const img = document.createElement("img");
-
-    img.src = file.dataUrl;
-    img.alt = file.name;
-
-    card.appendChild(img);
-
-  } else {
-
-    const icon =
-      document.createElement("div");
-
-    icon.className = "file-icon";
-    icon.textContent = getFileEmoji(file.mimeType);
-
-    const info =
-      document.createElement("div");
-
-    info.className = "file-info";
-
-    info.innerHTML = `
-      <div class="file-name">
-        ${escapeHTML(file.name)}
-      </div>
-      <div class="file-size">
-        ${formatBytes(file.size)}
-      </div>
-    `;
-
-    card.append(icon, info);
-  }
-
-  return card;
-}
-
-/* =========================================================
-   MARKDOWN
-========================================================= */
-
-function renderMarkdown(text) {
-
-  if (!text) return "";
-
-  const codeBlocks = [];
-
+function markdown(text) {
   let html = escapeHTML(text);
 
   html = html.replace(
-    /```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g,
-    (_, language, code) => {
-
-      const index = codeBlocks.length;
-
-      codeBlocks.push(`
-        <pre><code>${code.trim()}</code></pre>
-      `);
-
-      return `___CODE_BLOCK_${index}___`;
-    }
-  );
-
-  html = html.replace(
-    /`([^`]+)`/g,
-    '<code class="inline-code">$1</code>'
+    /```(\w+)?\n([\s\S]*?)```/g,
+    (_, lang, code) => `
+      <pre><code>${code.trim()}</code></pre>
+    `
   );
 
   html = html.replace(
@@ -632,704 +92,572 @@ function renderMarkdown(text) {
   );
 
   html = html.replace(
-    /\*(.*?)\*/g,
-    "<em>$1</em>"
+    /`([^`]+)`/g,
+    "<code>$1</code>"
   );
 
-  html = html.replace(
-    /(https?:\/\/[^\s<]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-  );
-
-  html = html.replace(/\n/g, "<br>");
-
-  codeBlocks.forEach((block, index) => {
-    html = html.replace(
-      `___CODE_BLOCK_${index}___`,
-      block
-    );
-  });
+  html = html
+    .split(/\n{2,}/)
+    .map((block) => {
+      if (block.startsWith("<pre>")) return block;
+      return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+    })
+    .join("");
 
   return html;
 }
 
-/* =========================================================
-   ACTIONS
-========================================================= */
+function showToast(message) {
+  toastEl.textContent = message;
+  toastEl.classList.add("show");
 
-function createActionButton(text, callback) {
+  clearTimeout(showToast.timer);
 
-  const button =
-    document.createElement("button");
+  showToast.timer = setTimeout(() => {
+    toastEl.classList.remove("show");
+  }, 2200);
+}
 
-  button.textContent = text;
+function updateSendState() {
+  const hasText = messageInput.value.trim().length > 0;
+  const hasFiles = attachments.length > 0;
 
-  button.addEventListener(
-    "click",
-    callback
+  sendBtn.disabled = generating ? false : (!hasText && !hasFiles);
+
+  const sendIcon = sendBtn.querySelector(".send-icon");
+  const stopIcon = sendBtn.querySelector(".stop-icon");
+
+  sendIcon.classList.toggle("hidden", generating);
+  stopIcon.classList.toggle("hidden", !generating);
+
+  sendBtn.setAttribute(
+    "aria-label",
+    generating ? "Stop generating" : "Send message"
   );
 
-  return button;
+  sendBtn.title = generating ? "Stop generating" : "Send message";
 }
 
-async function copyText(text) {
-
-  try {
-
-    await navigator.clipboard.writeText(text);
-
-  } catch {
-
-    const textarea =
-      document.createElement("textarea");
-
-    textarea.value = text;
-
-    document.body.appendChild(textarea);
-
-    textarea.select();
-
-    document.execCommand("copy");
-
-    textarea.remove();
-  }
+function autoResize() {
+  messageInput.style.height = "auto";
+  messageInput.style.height =
+    Math.min(messageInput.scrollHeight, 170) + "px";
 }
 
-function regenerate(messageId) {
-
-  const index =
-    messages.findIndex(
-      item => item.id === messageId
-    );
-
-  if (index === -1) return;
-
-  let userIndex = index - 1;
-
-  while (
-    userIndex >= 0 &&
-    messages[userIndex].role !== "user"
-  ) {
-    userIndex--;
-  }
-
-  if (userIndex < 0) return;
-
-  const oldAssistant =
-    messages[index];
-
-  messages.splice(index, 1);
-
-  renderMessages();
-
-  const userMessage =
-    messages[userIndex];
-
-  /*
-    Regeneration with attachments from the
-    current session is supported.
-  */
-
-  pendingAttachments =
-    (userMessage.attachments || []).map(file => ({
-      ...file
-    }));
-
-  sendMessage(userMessage.text);
-}
-
-/* =========================================================
-   TYPING
-========================================================= */
-
-function showTyping() {
-  typingRow.classList.remove("hidden");
-}
-
-function hideTyping() {
-  typingRow.classList.add("hidden");
-}
-
-/* =========================================================
-   VOICE RECORDING
-========================================================= */
-
-async function toggleRecording() {
-
-  if (mediaRecorder &&
-      mediaRecorder.state === "recording") {
-
-    stopRecording();
-    return;
-  }
-
-  if (!navigator.mediaDevices ||
-      !navigator.mediaDevices.getUserMedia) {
-
-    alert(
-      "Voice recording is not supported by this browser."
-    );
-
-    return;
-  }
-
-  try {
-
-    mediaStream =
-      await navigator.mediaDevices.getUserMedia({
-        audio: true
-      });
-
-    const mimeTypes = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/mp4",
-      "audio/ogg"
-    ];
-
-    let selectedMime = "";
-
-    for (const type of mimeTypes) {
-
-      if (
-        window.MediaRecorder &&
-        MediaRecorder.isTypeSupported(type)
-      ) {
-        selectedMime = type;
-        break;
-      }
-    }
-
-    mediaRecorder = selectedMime
-      ? new MediaRecorder(
-          mediaStream,
-          { mimeType: selectedMime }
-        )
-      : new MediaRecorder(mediaStream);
-
-    audioChunks = [];
-
-    mediaRecorder.ondataavailable =
-      event => {
-
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      };
-
-    mediaRecorder.onstop =
-      async () => {
-
-        const blob =
-          new Blob(
-            audioChunks,
-            {
-              type:
-                mediaRecorder.mimeType ||
-                "audio/webm"
-            }
-          );
-
-        await addVoiceAttachment(blob);
-
-        if (mediaStream) {
-          mediaStream
-            .getTracks()
-            .forEach(track => track.stop());
-        }
-      };
-
-    mediaRecorder.start();
-
-    micBtn.classList.add("recording");
-    micBtn.textContent = "■";
-    micBtn.title = "Stop recording";
-
-  } catch (error) {
-
-    console.error(error);
-
-    alert(
-      "Microphone permission was denied or unavailable."
-    );
-  }
-}
-
-function stopRecording() {
-
-  if (
-    mediaRecorder &&
-    mediaRecorder.state !== "inactive"
-  ) {
-    mediaRecorder.stop();
-  }
-
-  micBtn.classList.remove("recording");
-  micBtn.textContent = "🎙";
-  micBtn.title = "Voice message";
-}
-
-async function addVoiceAttachment(blob) {
-
-  if (blob.size > MAX_FILE_SIZE) {
-
-    alert("Voice message is larger than 8 MB.");
-    return;
-  }
-
-  const dataUrl =
-    await blobToDataURL(blob);
-
-  let extension = "webm";
-
-  if (blob.type.includes("mp4")) {
-    extension = "m4a";
-  } else if (blob.type.includes("ogg")) {
-    extension = "ogg";
-  }
-
-  pendingAttachments.push({
-    id: crypto.randomUUID(),
-    name: `voice-message-${Date.now()}.${extension}`,
-    mimeType: blob.type || "audio/webm",
-    size: blob.size,
-    dataUrl
-  });
-
-  renderAttachmentPreview();
-}
-
-function blobToDataURL(blob) {
-
-  return new Promise((resolve, reject) => {
-
-    const reader = new FileReader();
-
-    reader.onloadend = () =>
-      resolve(reader.result);
-
-    reader.onerror = reject;
-
-    reader.readAsDataURL(blob);
-  });
-}
-
-/* =========================================================
-   SPEECH
-========================================================= */
-
-function speakText(text) {
-
-  if (!("speechSynthesis" in window)) {
-
-    alert(
-      "Text-to-speech is not supported by this browser."
-    );
-
-    return;
-  }
-
-  window.speechSynthesis.cancel();
-
-  const cleanText =
-    text
-      .replace(/```[\s\S]*?```/g, " code ")
-      .replace(/[*_#]/g, "")
-      .trim();
-
-  const utterance =
-    new SpeechSynthesisUtterance(cleanText);
-
-  const containsHindi =
-    /[\u0900-\u097F]/.test(cleanText);
-
-  utterance.lang =
-    containsHindi
-      ? "hi-IN"
-      : "en-US";
-
-  utterance.rate = .95;
-  utterance.pitch = 1;
-
-  window.speechSynthesis.speak(
-    utterance
-  );
-}
-
-function toggleVoiceMode() {
-
-  voiceMode = !voiceMode;
-
-  voiceModeBtn.classList.toggle(
-    "active",
-    voiceMode
-  );
-
-  voiceModeBtn.textContent =
-    voiceMode
-      ? "🔊 Voice mode: On"
-      : "🔊 Voice mode: Off";
-}
-
-/* =========================================================
-   CHAT STORAGE
-========================================================= */
-
-function getChats() {
-
-  try {
-
-    return JSON.parse(
-      localStorage.getItem(STORAGE_KEY) || "[]"
-    );
-
-  } catch {
-
-    return [];
-  }
-}
-
-function saveChats(chats) {
-
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(chats)
-  );
-}
-
-function saveCurrentChat() {
-
-  if (!messages.length) return;
-
-  const chats = getChats();
-
-  let chat =
-    chats.find(
-      item => item.id === currentChatId
-    );
-
-  const firstUser =
-    messages.find(
-      item => item.role === "user"
-    );
-
-  const title =
-    firstUser
-      ? firstUser.text.slice(0, 45)
-      : "New chat";
-
-  if (!chat) {
-
-    currentChatId =
-      currentChatId ||
-      crypto.randomUUID();
-
-    chat = {
-      id: currentChatId,
-      title,
-      messages: [],
-      updatedAt: Date.now()
-    };
-
-    chats.unshift(chat);
-
-  } else {
-
-    chat.title = title;
-    chat.updatedAt = Date.now();
-  }
-
-  /*
-    Do not persist large base64 files.
-    Only save attachment metadata.
-  */
-
-  chat.messages =
-    messages.map(message => ({
-      ...message,
-
-      attachments:
-        (message.attachments || [])
-          .map(file => ({
-            id: file.id,
-            name: file.name,
-            mimeType: file.mimeType,
-            size: file.size
-          }))
-    }));
-
-  saveChats(chats);
-
-  renderChatHistory();
-}
-
-function loadChats() {
-
-  const chats = getChats();
+function renderHistory(filter = "") {
+  historyEl.innerHTML = "";
 
   if (!chats.length) {
-    startEmptyChat();
+    historyEl.innerHTML = `
+      <div class="history-title">Chats</div>
+      <div style="padding:10px;color:var(--muted);font-size:12px;">
+        No chats yet
+      </div>
+    `;
     return;
   }
 
-  const first = chats[0];
+  const filtered = chats.filter((chat) =>
+    chat.title.toLowerCase().includes(filter.toLowerCase())
+  );
 
-  currentChatId = first.id;
+  const title = document.createElement("div");
+  title.className = "history-title";
+  title.textContent = "Recent";
+  historyEl.appendChild(title);
 
-  messages =
-    first.messages || [];
-
-  renderMessages();
-
-  if (messages.length) {
-    welcome.classList.add("hidden");
-  }
-}
-
-function renderChatHistory() {
-
-  const query =
-    chatSearch.value.trim().toLowerCase();
-
-  chatHistory.innerHTML = "";
-
-  const chats =
-    getChats()
-      .sort(
-        (a, b) =>
-          b.updatedAt - a.updatedAt
-      )
-      .filter(chat =>
-        !query ||
-        chat.title
-          .toLowerCase()
-          .includes(query)
-      );
-
-  chats.forEach(chat => {
-
-    const button =
-      document.createElement("button");
-
+  filtered.forEach((chat) => {
+    const button = document.createElement("button");
     button.className =
-      "chat-item" +
-      (
-        chat.id === currentChatId
-          ? " active"
-          : ""
-      );
+      "history-item" +
+      (chat.id === currentChatId ? " active" : "");
 
     button.innerHTML = `
-      <span>💬</span>
-      <span class="chat-item-title">
-        ${escapeHTML(chat.title)}
-      </span>
+      <span>◌</span>
+      <span>${escapeHTML(chat.title)}</span>
     `;
 
-    button.addEventListener(
-      "click",
-      () => loadChat(chat.id)
-    );
+    button.addEventListener("click", () => {
+      currentChatId = chat.id;
+      renderChat();
+      renderHistory(searchInput.value);
+      sidebar.classList.remove("open");
+    });
 
-    chatHistory.appendChild(button);
+    historyEl.appendChild(button);
   });
 }
 
-function loadChat(id) {
+function renderChat() {
+  const chat = getCurrentChat();
 
-  const chats = getChats();
+  messages.innerHTML = "";
 
-  const chat =
-    chats.find(
-      item => item.id === id
-    );
-
-  if (!chat) return;
-
-  currentChatId = chat.id;
-
-  messages =
-    chat.messages || [];
-
-  pendingAttachments = [];
-
-  renderAttachmentPreview();
-  renderMessages();
-
-  if (messages.length) {
-    welcome.classList.add("hidden");
-  } else {
+  if (!chat || chat.messages.length === 0) {
     welcome.classList.remove("hidden");
+    return;
   }
 
-  renderChatHistory();
+  welcome.classList.add("hidden");
 
-  closeSidebarMenu();
+  chat.messages.forEach((message) => {
+    renderMessage(message.role, message.content, false);
+  });
+
+  scrollBottom();
+}
+
+function renderMessage(role, content, save = true) {
+  welcome.classList.add("hidden");
+
+  const wrapper = document.createElement("div");
+  wrapper.className = `message ${role}`;
+
+  const avatar = document.createElement("div");
+  avatar.className = "message-avatar";
+  avatar.textContent = role === "user" ? "You" : "A";
+
+  const contentWrap = document.createElement("div");
+  contentWrap.className = "message-content";
+
+  const bubble = document.createElement("div");
+  bubble.className = "message-bubble";
+
+  if (role === "assistant") {
+    bubble.innerHTML = markdown(content);
+  } else {
+    bubble.textContent = content;
+  }
+
+  contentWrap.appendChild(bubble);
+
+  if (role === "assistant") {
+    const actions = document.createElement("div");
+    actions.className = "message-actions";
+
+    const copy = document.createElement("button");
+    copy.textContent = "Copy";
+
+    copy.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(content);
+      showToast("Copied");
+    });
+
+    const speak = document.createElement("button");
+    speak.textContent = "Speak";
+
+    speak.addEventListener("click", () => {
+      speechSynthesis.cancel();
+      speechSynthesis.speak(new SpeechSynthesisUtterance(content));
+    });
+
+    actions.append(copy, speak);
+    contentWrap.appendChild(actions);
+  }
+
+  wrapper.append(avatar, contentWrap);
+  messages.appendChild(wrapper);
+
+  if (save) {
+    const chat = ensureChat();
+
+    chat.messages.push({
+      role,
+      content
+    });
+
+    if (
+      role === "user" &&
+      chat.title === "New chat"
+    ) {
+      chat.title = content.slice(0, 38);
+    }
+
+    saveChats();
+    renderHistory(searchInput.value);
+  }
+
+  scrollBottom();
+}
+
+function scrollBottom() {
+  requestAnimationFrame(() => {
+    const area = $("#chatArea");
+    area.scrollTop = area.scrollHeight;
+  });
+}
+
+function addTyping() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "message assistant";
+  wrapper.id = "typingMessage";
+
+  wrapper.innerHTML = `
+    <div class="message-avatar">A</div>
+    <div class="message-content">
+      <div class="typing">
+        <i></i><i></i><i></i>
+      </div>
+    </div>
+  `;
+
+  messages.appendChild(wrapper);
+  scrollBottom();
+}
+
+function removeTyping() {
+  $("#typingMessage")?.remove();
+}
+
+async function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      resolve({
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        size: file.size,
+        data: reader.result
+      });
+    };
+
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderAttachments() {
+  attachmentPreview.innerHTML = "";
+
+  attachments.forEach((file, index) => {
+    const chip = document.createElement("div");
+    chip.className = "file-chip";
+
+    chip.innerHTML = `
+      <span>${escapeHTML(file.name)}</span>
+      <button type="button" aria-label="Remove attachment">×</button>
+    `;
+
+    chip.querySelector("button").addEventListener("click", () => {
+      attachments.splice(index, 1);
+      renderAttachments();
+      updateSendState();
+    });
+
+    attachmentPreview.appendChild(chip);
+  });
+}
+
+async function handleFiles(files) {
+  const selected = [...files];
+
+  if (selected.length > 5) {
+    showToast("Maximum 5 files allowed");
+    return;
+  }
+
+  const totalSize =
+    selected.reduce((sum, file) => sum + file.size, 0);
+
+  if (totalSize > 12 * 1024 * 1024) {
+    showToast("Total file size must be under 12 MB");
+    return;
+  }
+
+  for (const file of selected) {
+    if (file.size > 8 * 1024 * 1024) {
+      showToast(`${file.name} is too large`);
+      continue;
+    }
+
+    try {
+      attachments.push(await readFile(file));
+    } catch {
+      showToast(`Could not read ${file.name}`);
+    }
+  }
+
+  renderAttachments();
+  updateSendState();
+}
+
+async function sendMessage() {
+  if (generating) {
+    stopGeneration();
+    return;
+  }
+
+  const text = messageInput.value.trim();
+
+  if (!text && attachments.length === 0) return;
+
+  const chat = ensureChat();
+
+  const outgoing = {
+    message: text,
+    attachments: attachments.map((file) => ({
+      name: file.name,
+      type: file.type,
+      data: file.data
+    })),
+    history: chat.messages.map((message) => ({
+      role: message.role === "assistant" ? "model" : "user",
+      parts: [{ text: message.content }]
+    }))
+  };
+
+  renderMessage("user", text || "[Attachment]");
+  
+  messageInput.value = "";
+  autoResize();
+
+  attachments = [];
+  renderAttachments();
+
+  generating = true;
+  updateSendState();
+
+  addTyping();
+
+  controller = new AbortController();
+
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(outgoing),
+      signal: controller.signal
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "AI request failed");
+    }
+
+    removeTyping();
+
+    renderMessage(
+      "assistant",
+      data.text || "I couldn't generate a response."
+    );
+
+    const current = getCurrentChat();
+
+    if (current) {
+      current.messages.push({
+        role: "assistant",
+        content: data.text || ""
+      });
+
+      saveChats();
+    }
+
+  } catch (error) {
+    removeTyping();
+
+    if (error.name === "AbortError") {
+      showToast("Generation stopped");
+    } else {
+      renderMessage(
+        "assistant",
+        `Sorry, something went wrong.\n\n${error.message}`
+      );
+    }
+  } finally {
+    controller = null;
+    generating = false;
+    updateSendState();
+    messageInput.focus();
+  }
+}
+
+function stopGeneration() {
+  if (controller) {
+    controller.abort();
+  }
 }
 
 function newChat() {
+  const chat = createChat();
 
-  if (controller) {
-    stopGeneration();
-  }
+  chats.unshift(chat);
+  currentChatId = chat.id;
 
-  currentChatId = null;
+  saveChats();
 
-  messages = [];
-  pendingAttachments = [];
-
-  messageInput.value = "";
-
-  renderAttachmentPreview();
-  renderMessages();
-
+  messages.innerHTML = "";
   welcome.classList.remove("hidden");
 
+  messageInput.value = "";
+  attachments = [];
+
+  renderAttachments();
   autoResize();
+  updateSendState();
+  renderHistory();
 
-  renderChatHistory();
-
-  closeSidebarMenu();
-
+  sidebar.classList.remove("open");
   messageInput.focus();
 }
 
-function startEmptyChat() {
+function applyTheme() {
+  const current = localStorage.getItem("aura_theme") || "dark";
 
-  currentChatId = null;
-  messages = [];
-
-  renderMessages();
-
-  welcome.classList.remove("hidden");
-
-  renderChatHistory();
-}
-
-function clearAllChats() {
-
-  const confirmed =
-    confirm(
-      "Delete all saved chats?"
-    );
-
-  if (!confirmed) return;
-
-  localStorage.removeItem(
-    STORAGE_KEY
-  );
-
-  newChat();
-}
-
-/* =========================================================
-   SIDEBAR
-========================================================= */
-
-function openSidebar() {
-
-  sidebar.classList.add("open");
-  sidebarOverlay.classList.add("show");
-}
-
-function closeSidebarMenu() {
-
-  sidebar.classList.remove("open");
-  sidebarOverlay.classList.remove("show");
-}
-
-/* =========================================================
-   THEME
-========================================================= */
-
-function loadTheme() {
-
-  const theme =
-    localStorage.getItem(THEME_KEY);
-
-  if (theme === "light") {
-
-    document.body.classList.add("light");
-    themeIcon.textContent = "☀";
-
+  if (current === "light") {
+    document.documentElement.style.setProperty("--bg", "#f6f7fb");
+    document.documentElement.style.setProperty("--panel", "#ffffff");
+    document.documentElement.style.setProperty("--panel-2", "#f0f1f6");
+    document.documentElement.style.setProperty("--border", "rgba(0,0,0,.08)");
+    document.documentElement.style.setProperty("--text", "#111217");
+    document.documentElement.style.setProperty("--muted", "#70727d");
+    document.documentElement.style.setProperty("--user", "#ececf2");
   } else {
-
-    document.body.classList.remove("light");
-    themeIcon.textContent = "☾";
+    document.documentElement.style.setProperty("--bg", "#0a0a0d");
+    document.documentElement.style.setProperty("--panel", "#101116");
+    document.documentElement.style.setProperty("--panel-2", "#15161c");
+    document.documentElement.style.setProperty("--border", "rgba(255,255,255,.09)");
+    document.documentElement.style.setProperty("--text", "#f5f5f7");
+    document.documentElement.style.setProperty("--muted", "#9699a5");
+    document.documentElement.style.setProperty("--user", "#1b1c23");
   }
 }
 
 function toggleTheme() {
-
-  const light =
-    document.body.classList.toggle("light");
+  const current = localStorage.getItem("aura_theme") || "dark";
 
   localStorage.setItem(
-    THEME_KEY,
-    light ? "light" : "dark"
+    "aura_theme",
+    current === "dark" ? "light" : "dark"
   );
 
-  themeIcon.textContent =
-    light ? "☀" : "☾";
+  applyTheme();
 }
 
-/* =========================================================
-   HELPERS
-========================================================= */
+composer.addEventListener("submit", (event) => {
+  event.preventDefault();
+  sendMessage();
+});
 
-function escapeHTML(value) {
+messageInput.addEventListener("input", () => {
+  autoResize();
+  updateSendState();
+});
 
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
+messageInput.addEventListener("compositionstart", () => {
+  composing = true;
+});
 
-function shortFileName(name) {
+messageInput.addEventListener("compositionend", () => {
+  composing = false;
+});
 
-  if (name.length <= 12) {
-    return name;
+messageInput.addEventListener("keydown", (event) => {
+  if (
+    event.key === "Enter" &&
+    !event.shiftKey &&
+    !event.isComposing &&
+    !composing
+  ) {
+    event.preventDefault();
+    sendMessage();
+  }
+});
+
+fileInput.addEventListener("change", () => {
+  handleFiles(fileInput.files);
+  fileInput.value = "";
+});
+
+newChatBtn.addEventListener("click", newChat);
+topNewChat.addEventListener("click", newChat);
+
+themeBtn.addEventListener("click", toggleTheme);
+
+clearBtn.addEventListener("click", () => {
+  if (!confirm("Clear all AURA AI chats?")) return;
+
+  chats = [];
+  currentChatId = null;
+
+  localStorage.removeItem("aura_chats");
+
+  newChat();
+  renderHistory();
+});
+
+searchInput.addEventListener("input", () => {
+  renderHistory(searchInput.value);
+});
+
+menuBtn.addEventListener("click", () => {
+  sidebar.classList.toggle("open");
+});
+
+document.querySelectorAll("[data-prompt]").forEach((button) => {
+  button.addEventListener("click", () => {
+    messageInput.value = button.dataset.prompt;
+    autoResize();
+    updateSendState();
+    messageInput.focus();
+  });
+});
+
+voiceBtn.addEventListener("click", async () => {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showToast("Voice recording is not supported");
+    return;
   }
 
-  return name.slice(0, 9) + "...";
-}
-
-function formatBytes(bytes) {
-
-  if (!bytes) return "0 B";
-
-  const units =
-    ["B", "KB", "MB", "GB"];
-
-  const index =
-    Math.floor(
-      Math.log(bytes) /
-      Math.log(1024)
-    );
-
-  return (
-    (bytes /
-      Math.pow(1024, index))
-      .toFixed(index ? 1 : 0)
-    +
-    " " +
-    units[index]
-  );
-}
-
-function getFileEmoji(mime) {
-
-  if (!mime) return "📄";
-
-  if (mime.startsWith("audio/")) return "🎵";
-  if (mime.startsWith("video/")) return "🎬";
-  if (mime.startsWith("image/")) return "🖼️";
-
-  if (mime === "application/pdf") {
-    return "📕";
+  if (mediaRecorder?.state === "recording") {
+    mediaRecorder.stop();
+    return;
   }
 
-  return "📄";
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true
+    });
+
+    audioChunks = [];
+
+    mediaRecorder = new MediaRecorder(stream);
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size) {
+        audioChunks.push(event.data);
       }
+    };
+
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach((track) => track.stop());
+
+      const blob = new Blob(audioChunks, {
+        type: mediaRecorder.mimeType || "audio/webm"
+      });
+
+      showToast(`Voice recorded: ${Math.round(blob.size / 1024)} KB`);
+      voiceBtn.classList.remove("recording");
+    };
+
+    mediaRecorder.start();
+    voiceBtn.classList.add("recording");
+    showToast("Recording... tap again to stop");
+
+  } catch {
+    showToast("Microphone permission denied");
+  }
+});
+
+applyTheme();
+
+if (chats.length) {
+  currentChatId = chats[0].id;
+}
+
+renderHistory();
+renderChat();
+updateSendState();
